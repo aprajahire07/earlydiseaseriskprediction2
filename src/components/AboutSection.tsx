@@ -137,39 +137,42 @@ export const AboutSection: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 1. Introductory Overview Box */}
-      <div className="border border-gray-300 p-5 sm:p-6 bg-white space-y-3">
-        <h1 className="text-xl font-bold text-[#3b82f6] border-b border-gray-200 pb-2">
-          About Our Disease Prediction System
+      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
+          <span>About Our Disease Prediction System</span>
+          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+            Educational ML
+          </span>
         </h1>
-        <p className="text-sm text-gray-700 leading-relaxed">
+        <p className="text-sm text-slate-700 leading-relaxed">
           Our platform uses machine learning models to estimate the personal risk profile of five major chronic health conditions—<strong>Diabetes</strong>, <strong>Heart Disease</strong>, <strong>Hypertension</strong>, <strong>Metabolic Disease</strong>, and <strong>Stroke</strong>—based on user-provided lifestyle parameters and medical background.
         </p>
-        <p className="text-sm text-gray-700 leading-relaxed">
+        <p className="text-sm text-slate-700 leading-relaxed">
           By examining non-invasive indicators such as Body Mass Index (BMI), blood pressure stages, physical exercise habits, smoking and alcohol patterns, and family medical heredity, our system highlights potential vulnerability factors early. The goal is to empower users with proactive health awareness, encourage timely physician consultations, and support positive lifestyle choices before chronic conditions progress.
         </p>
       </div>
 
       {/* 2. Target Diseases Section */}
-      <div className="border border-gray-300 p-5 sm:p-6 bg-white space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-200 pb-3">
+      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-slate-900">
               Understanding the 5 Diseases We Analyze
             </h2>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-slate-500">
               Educational guides on each condition, common risk triggers, symptoms, and preventive actions.
             </p>
           </div>
 
           {/* Quick Filter Buttons */}
-          <div className="flex flex-wrap gap-1 text-xs">
+          <div className="flex flex-wrap gap-1.5 text-xs">
             <button
               type="button"
               onClick={() => setSelectedDisease('all')}
-              className={`px-2.5 py-1 border cursor-pointer ${
+              className={`px-3 py-1 rounded-md border cursor-pointer font-medium transition-all ${
                 selectedDisease === 'all'
-                  ? 'bg-[#3b82f6] text-white border-blue-700 font-bold'
-                  : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                  ? 'bg-blue-600 text-white border-blue-700 font-bold shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
               }`}
             >
               All (5)
@@ -179,10 +182,10 @@ export const AboutSection: React.FC = () => {
                 key={d.id}
                 type="button"
                 onClick={() => setSelectedDisease(d.id)}
-                className={`px-2 py-1 border cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md border cursor-pointer font-medium transition-all ${
                   selectedDisease === d.id
-                    ? 'bg-[#3b82f6] text-white border-blue-700 font-bold'
-                    : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                    ? 'bg-blue-600 text-white border-blue-700 font-bold shadow-xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
                 {d.name.split('.')[1].split('(')[0].trim()}
@@ -196,29 +199,29 @@ export const AboutSection: React.FC = () => {
           {filteredDiseases.map((d) => (
             <div
               key={d.id}
-              className="border border-gray-300 bg-white p-4 sm:p-5 space-y-3"
+              className="border border-slate-200 rounded-xl bg-white p-4 sm:p-5 space-y-3 hover:border-slate-300 transition-colors shadow-2xs"
             >
               {/* Card Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-gray-200 pb-2">
-                <h3 className="text-base font-bold text-gray-900">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-slate-100 pb-2">
+                <h3 className="text-base font-bold text-slate-900">
                   {d.name}
                 </h3>
-                <span className="text-[11px] font-semibold text-[#3b82f6] bg-blue-50 border border-blue-200 px-2 py-0.5 self-start sm:self-auto">
+                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full self-start sm:self-auto">
                   {d.badge}
                 </span>
               </div>
 
               {/* Short Intro */}
-              <p className="text-xs sm:text-sm text-gray-700 font-medium italic">
+              <p className="text-xs sm:text-sm text-slate-700 font-medium italic">
                 {d.intro}
               </p>
 
               {/* What Is It */}
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-800 mb-1">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-1">
                   What is it?
                 </h4>
-                <p className="text-xs sm:text-sm text-gray-700 leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
                   {d.whatIsIt}
                 </p>
               </div>
@@ -226,12 +229,12 @@ export const AboutSection: React.FC = () => {
               {/* Risk Factors & Symptoms Two-Column Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 {/* Risk Factors */}
-                <div className="border border-gray-200 bg-gray-50 p-3">
-                  <h5 className="text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                <div className="border border-slate-200 rounded-lg bg-slate-50/70 p-3">
+                  <h5 className="text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
                     Common Risk Factors
                   </h5>
-                  <ul className="list-disc list-inside space-y-1 text-xs text-gray-700">
+                  <ul className="list-disc list-inside space-y-1 text-xs text-slate-700">
                     {d.riskFactors.map((rf, idx) => (
                       <li key={idx} className="leading-snug">
                         {rf}
@@ -241,12 +244,12 @@ export const AboutSection: React.FC = () => {
                 </div>
 
                 {/* Common Symptoms */}
-                <div className="border border-gray-200 bg-gray-50 p-3">
-                  <h5 className="text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>
+                <div className="border border-slate-200 rounded-lg bg-slate-50/70 p-3">
+                  <h5 className="text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
                     Common Symptoms
                   </h5>
-                  <ul className="list-disc list-inside space-y-1 text-xs text-gray-700">
+                  <ul className="list-disc list-inside space-y-1 text-xs text-slate-700">
                     {d.symptoms.map((sym, idx) => (
                       <li key={idx} className="leading-snug">
                         {sym}
@@ -257,21 +260,21 @@ export const AboutSection: React.FC = () => {
               </div>
 
               {/* Why Early Detection Matters */}
-              <div className="border-t border-gray-100 pt-2 text-xs sm:text-sm">
-                <span className="font-bold text-gray-800">
+              <div className="border-t border-slate-100 pt-2 text-xs sm:text-sm">
+                <span className="font-bold text-slate-800">
                   Why Early Detection Matters:{' '}
                 </span>
-                <span className="text-gray-700 leading-relaxed">
+                <span className="text-slate-700 leading-relaxed">
                   {d.whyEarlyDetection}
                 </span>
               </div>
 
               {/* How Lifestyle and Checkups Help */}
-              <div className="border-t border-gray-100 pt-2 text-xs sm:text-sm">
-                <span className="font-bold text-gray-800">
+              <div className="border-t border-slate-100 pt-2 text-xs sm:text-sm">
+                <span className="font-bold text-slate-800">
                   Prevention & Checkups:{' '}
                 </span>
-                <span className="text-gray-700 leading-relaxed">
+                <span className="text-slate-700 leading-relaxed">
                   {d.prevention}
                 </span>
               </div>
@@ -281,14 +284,14 @@ export const AboutSection: React.FC = () => {
       </div>
 
       {/* 3. Project Context & Objectives Box */}
-      <div className="border border-gray-300 p-5 bg-white space-y-4">
-        <h2 className="text-base font-bold text-[#3b82f6] border-b border-gray-200 pb-1">
-          Project Architecture & Objective
+      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-4">
+        <h2 className="text-base font-bold text-slate-900 border-b border-slate-200 pb-1">
+          Project Architecture &amp; Objective
         </h2>
-        <p className="text-sm text-gray-700 leading-relaxed">
+        <p className="text-sm text-slate-700 leading-relaxed">
           The goal of this initiative is to identify how non-clinical lifestyle parameters interact with hereditary history to influence vulnerability to chronic diseases.
         </p>
-        <div className="border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 space-y-1.5">
+        <div className="border border-slate-200 rounded-lg bg-slate-50 p-4 text-xs text-slate-700 space-y-2">
           <p>
             <strong>Step 1:</strong> User enters standard lifestyle metrics (BMI, blood pressure level, smoking, alcohol, exercise frequency, and family medical background).
           </p>
@@ -305,11 +308,11 @@ export const AboutSection: React.FC = () => {
       </div>
 
       {/* 4. Required Medical Disclaimer */}
-      <div className="border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 space-y-1">
+      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 space-y-1">
         <div className="font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
           <span>Medical Disclaimer</span>
         </div>
-        <p className="leading-relaxed text-gray-800">
+        <p className="leading-relaxed text-slate-700 text-[11px]">
           The predictions provided by this platform are for educational and informational purposes only and should not be considered a medical diagnosis. Users should consult a qualified healthcare professional for proper evaluation and medical advice.
         </p>
       </div>
