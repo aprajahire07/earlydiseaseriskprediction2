@@ -1,0 +1,6 @@
+{
+  "name": "Early Disease Risk Prediction",
+  "description": "A college mini-project frontend demo for early disease risk prediction using lifestyle and medical history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
