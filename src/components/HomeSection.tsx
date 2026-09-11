@@ -13,16 +13,19 @@ import {
   Sparkles,
   TrendingUp,
   Info,
+  Database,
 } from 'lucide-react';
 
 interface HomeSectionProps {
   onCheckRisk: () => void;
   onLearnMore?: () => void;
+  onNavigateToAuth?: () => void;
 }
 
 export const HomeSection: React.FC<HomeSectionProps> = ({
   onCheckRisk,
   onLearnMore,
+  onNavigateToAuth,
 }) => {
   const targetDiseases = [
     {
@@ -166,6 +169,17 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               >
                 <span>About the 5 Diseases</span>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+            )}
+
+            {onNavigateToAuth && (
+              <button
+                type="button"
+                onClick={onNavigateToAuth}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold px-4 py-3 text-sm sm:text-base shadow-2xs transition-all cursor-pointer"
+              >
+                <Database className="w-4 h-4 text-emerald-600" />
+                <span>Supabase Auth &amp; Data Portal</span>
               </button>
             )}
           </div>
