@@ -149,25 +149,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigateToForm }) => {
   return (
     <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto">
       {/* Top Banner / Supabase Integration Info */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+      <div className="glass-panel rounded-3xl p-6 sm:p-7 shadow-xl border border-white/90 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
                 <Database className="w-4 h-4" />
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Supabase User Data &amp; Auth Portal
+                Patient Portal &amp; Supabase Synchronization
               </h2>
             </div>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs sm:text-sm text-slate-600">
               Collect user registration details, credentials, and lifestyle parameters synced directly into your{' '}
               <span className="font-semibold text-slate-800">Supabase cloud database</span>.
             </p>
           </div>
 
           {/* Live Supabase Connection Badge */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs shrink-0">
+          <div className="flex items-center gap-2 bg-white/70 border border-slate-200/80 rounded-xl p-2.5 text-xs shrink-0">
             <div className="flex items-center gap-1.5">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -199,7 +199,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigateToForm }) => {
         </div>
 
         {/* Supabase Endpoint Quick Bar */}
-        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-mono">
+        <div className="mt-2 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-mono">
           <div className="flex items-center gap-1 truncate max-w-full">
             <span className="font-semibold text-slate-600">Project Endpoint:</span>
             <span className="text-slate-800 truncate">{SUPABASE_PROJECT_URL}</span>
@@ -298,7 +298,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigateToForm }) => {
 
       {/* TAB 1: SIGN UP (COLLECT USER DATA) */}
       {activeTab === 'signup' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-xs space-y-6">
+        <div className="glass-panel rounded-3xl p-6 sm:p-8 shadow-xl border border-white/90 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h3 className="text-lg font-bold text-slate-900">User Data Registration Form</h3>

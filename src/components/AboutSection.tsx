@@ -135,31 +135,33 @@ export const AboutSection: React.FC = () => {
       : diseases.filter((d) => d.id === selectedDisease);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 1. Introductory Overview Box */}
-      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-3">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
-          <span>About Our Disease Prediction System</span>
-          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
-            Educational ML
+      <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-4 border border-white/90 shadow-xl">
+        <div className="border-b border-slate-200/60 pb-3 flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+            About Our Disease Prediction System
+          </h1>
+          <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-3 py-1 rounded-full">
+            Preventive SaaS
           </span>
-        </h1>
-        <p className="text-sm text-slate-700 leading-relaxed">
-          Our platform uses machine learning models to estimate the personal risk profile of five major chronic health conditions—<strong>Diabetes</strong>, <strong>Heart Disease</strong>, <strong>Hypertension</strong>, <strong>Metabolic Disease</strong>, and <strong>Stroke</strong>—based on user-provided lifestyle parameters and medical background.
+        </div>
+        <p className="text-sm text-slate-600 leading-relaxed font-normal">
+          Our platform uses machine learning models to estimate personal risk profiles across five major health conditions—<strong>Type 2 Diabetes</strong>, <strong>Heart Health</strong>, <strong>Blood Pressure</strong>, <strong>Stroke Risk</strong>, and <strong>Metabolic Health</strong>—based on everyday habits and health history.
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="text-sm text-slate-600 leading-relaxed font-normal">
           By examining non-invasive indicators such as Body Mass Index (BMI), blood pressure stages, physical exercise habits, smoking and alcohol patterns, and family medical heredity, our system highlights potential vulnerability factors early. The goal is to empower users with proactive health awareness, encourage timely physician consultations, and support positive lifestyle choices before chronic conditions progress.
         </p>
       </div>
 
       {/* 2. Target Diseases Section */}
-      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3">
+      <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6 border border-white/90 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/60 pb-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">
-              Understanding the 5 Diseases We Analyze
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              Understanding the 5 Conditions We Analyze
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               Educational guides on each condition, common risk triggers, symptoms, and preventive actions.
             </p>
           </div>
@@ -169,10 +171,10 @@ export const AboutSection: React.FC = () => {
             <button
               type="button"
               onClick={() => setSelectedDisease('all')}
-              className={`px-3 py-1 rounded-md border cursor-pointer font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-full border cursor-pointer font-bold transition-all ${
                 selectedDisease === 'all'
-                  ? 'bg-blue-600 text-white border-blue-700 font-bold shadow-xs'
-                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                  : 'bg-white/80 text-slate-700 border-slate-200 hover:bg-white'
               }`}
             >
               All (5)
@@ -182,10 +184,10 @@ export const AboutSection: React.FC = () => {
                 key={d.id}
                 type="button"
                 onClick={() => setSelectedDisease(d.id)}
-                className={`px-2.5 py-1 rounded-md border cursor-pointer font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-full border cursor-pointer font-bold transition-all ${
                   selectedDisease === d.id
-                    ? 'bg-blue-600 text-white border-blue-700 font-bold shadow-xs'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white/80 text-slate-700 border-slate-200 hover:bg-white'
                 }`}
               >
                 {d.name.split('.')[1].split('(')[0].trim()}
@@ -199,7 +201,7 @@ export const AboutSection: React.FC = () => {
           {filteredDiseases.map((d) => (
             <div
               key={d.id}
-              className="border border-slate-200 rounded-xl bg-white p-4 sm:p-5 space-y-3 hover:border-slate-300 transition-colors shadow-2xs"
+              className="glass-panel-subtle rounded-2xl p-5 space-y-3.5 border border-white/80 hover:border-white transition-all shadow-2xs"
             >
               {/* Card Header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-slate-100 pb-2">
@@ -284,36 +286,36 @@ export const AboutSection: React.FC = () => {
       </div>
 
       {/* 3. Project Context & Objectives Box */}
-      <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-4">
-        <h2 className="text-base font-bold text-slate-900 border-b border-slate-200 pb-1">
+      <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-4 border border-white/90 shadow-xl">
+        <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200/60 pb-2">
           Project Architecture &amp; Objective
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="text-sm text-slate-600 leading-relaxed font-normal">
           The goal of this initiative is to identify how non-clinical lifestyle parameters interact with hereditary history to influence vulnerability to chronic diseases.
         </p>
-        <div className="border border-slate-200 rounded-lg bg-slate-50 p-4 text-xs text-slate-700 space-y-2">
+        <div className="glass-panel-subtle rounded-2xl p-5 text-xs text-slate-700 space-y-2 border border-white/80">
           <p>
-            <strong>Step 1:</strong> User enters standard lifestyle metrics (BMI, blood pressure level, smoking, alcohol, exercise frequency, and family medical background).
+            <strong className="text-slate-900">Step 1:</strong> User enters standard lifestyle metrics (BMI, blood pressure level, smoking, alcohol, exercise frequency, and family medical background).
           </p>
           <p>
-            <strong>Step 2:</strong> Data is formatted into standardized feature vectors.
+            <strong className="text-slate-900">Step 2:</strong> Data is formatted into standardized feature vectors.
           </p>
           <p>
-            <strong>Step 3:</strong> Machine learning algorithms evaluate risk probabilities for target conditions.
+            <strong className="text-slate-900">Step 3:</strong> Machine learning algorithms evaluate risk probabilities for target conditions.
           </p>
           <p>
-            <strong>Step 4:</strong> The interface delivers a risk level breakdown along with lifestyle recommendations.
+            <strong className="text-slate-900">Step 4:</strong> The interface delivers a risk level breakdown along with lifestyle recommendations.
           </p>
         </div>
       </div>
 
       {/* 4. Required Medical Disclaimer */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 space-y-1">
-        <div className="font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-          <span>Medical Disclaimer</span>
+      <div className="glass-panel-subtle rounded-2xl p-4 sm:p-5 text-xs text-slate-600 space-y-1 border border-white/80 max-w-3xl mx-auto">
+        <div className="font-bold uppercase tracking-wider text-slate-800 text-xs">
+          Medical Notice &bull; Educational Tool
         </div>
-        <p className="leading-relaxed text-slate-700 text-[11px]">
-          The predictions provided by this platform are for educational and informational purposes only and should not be considered a medical diagnosis. Users should consult a qualified healthcare professional for proper evaluation and medical advice.
+        <p className="leading-relaxed text-slate-500 text-[11px] font-normal">
+          The predictions provided by this platform are for educational and informational purposes only and should not be considered a medical diagnosis. Users should consult a qualified healthcare professional for proper evaluation and clinical advice.
         </p>
       </div>
     </div>

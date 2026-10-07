@@ -331,17 +331,17 @@ export const PredictionForm: React.FC = () => {
   };
 
   return (
-    <div className="border border-slate-200 rounded-xl p-5 sm:p-7 bg-white shadow-xs space-y-6">
+    <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6 border border-white/90 shadow-xl">
       {/* Clean Header */}
-      <div className="border-b border-slate-200 pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div className="border-b border-slate-200/60 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2.5 tracking-tight">
             <span>Risk Prediction Form</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-sm">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/80 px-2.5 py-0.5 rounded-full">
               Non-Invasive
             </span>
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Enter your lifestyle and health parameters to calculate disease risk factors.
           </p>
         </div>
@@ -349,7 +349,7 @@ export const PredictionForm: React.FC = () => {
         <button
           type="button"
           onClick={handleLoadSample}
-          className="border border-slate-300 rounded-md bg-slate-50 hover:bg-slate-100 text-slate-700 px-3 py-1.5 text-xs cursor-pointer font-semibold shadow-2xs transition-colors"
+          className="rounded-xl border border-slate-200 bg-white/80 hover:bg-white text-slate-700 px-3.5 py-2 text-xs cursor-pointer font-bold shadow-2xs hover:border-slate-300 transition-all self-start sm:self-auto"
           title="Load sample values for testing"
         >
           Load Sample Data
