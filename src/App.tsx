@@ -21,7 +21,7 @@ function MainContent() {
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {activeTab === 'home' && (
           <HomeSection
             onCheckRisk={() => setActiveTab('form')}
@@ -46,12 +46,12 @@ function MainContent() {
       <UserProfileModal onNavigateToForm={() => setActiveTab('form')} />
 
       {/* Professional Medical Footer */}
-      <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-600 bg-white mt-12">
-        <div className="max-w-5xl mx-auto px-4 space-y-2">
+      <footer className="border-t border-slate-200/80 py-8 text-center text-xs text-slate-500 bg-white mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-2">
           <p className="font-semibold text-slate-700">
             Early Disease Risk Prediction Platform &bull; Academic Mini Project
           </p>
-          <p className="text-[11px] text-slate-500 max-w-xl mx-auto leading-relaxed">
+          <p className="text-[11px] text-slate-500 max-w-2xl mx-auto leading-relaxed">
             Designed for educational and early health awareness purposes only. Estimates are computed using multi-parameter lifestyle risk vectors and should not replace clinical medical evaluation.
           </p>
           <p className="text-[10px] text-slate-400 pt-1">

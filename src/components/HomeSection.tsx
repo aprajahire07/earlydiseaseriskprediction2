@@ -7,13 +7,14 @@ import {
   Scale,
   ArrowRight,
   ShieldCheck,
-  CheckCircle2,
-  ChevronRight,
   Stethoscope,
   Sparkles,
   TrendingUp,
-  Info,
   Database,
+  ChevronRight,
+  CheckCircle,
+  Clock,
+  Lock,
 } from 'lucide-react';
 
 interface HomeSectionProps {
@@ -30,294 +31,361 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const targetDiseases = [
     {
       id: 'diabetes',
-      title: 'Diabetes (Type 2)',
-      category: 'Metabolic & Glycemic',
+      title: 'Type 2 Diabetes',
+      category: 'Metabolic & Glycemic Health',
       icon: Activity,
-      color: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-      badgeColor: 'bg-emerald-100 text-emerald-800',
-      summary: 'Impaired insulin regulation causing glucose accumulation in the bloodstream.',
-      keyFactors: 'High BMI, sedentary lifestyle, dietary sugars, heredity',
+      iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      summary: 'Evaluates impaired insulin regulation, glucose accumulation, and metabolic resistance.',
+      keyFactors: 'Elevated BMI, sedentary routine, refined sugars, family history',
     },
     {
       id: 'heart-disease',
-      title: 'Heart Disease',
-      category: 'Cardiovascular Health',
+      title: 'Cardiovascular Disease',
+      category: 'Heart & Arterial Health',
       icon: HeartPulse,
-      color: 'text-rose-600 bg-rose-50 border-rose-200',
-      badgeColor: 'bg-rose-100 text-rose-800',
-      summary: 'Coronary artery narrowing and plaque deposition restricting blood flow.',
-      keyFactors: 'High BP, smoking, high LDL cholesterol, physical inactivity',
+      iconBg: 'bg-rose-50 text-rose-600 border-rose-100',
+      summary: 'Assesses arterial plaque accumulation, coronary strain, and blood flow impediments.',
+      keyFactors: 'Hypertension, smoking, high LDL cholesterol, inactivity',
     },
     {
       id: 'hypertension',
       title: 'Hypertension',
       category: 'Vascular & Arterial Pressure',
       icon: Gauge,
-      color: 'text-amber-600 bg-amber-50 border-amber-200',
-      badgeColor: 'bg-amber-100 text-amber-800',
-      summary: 'Persistent elevated force against artery walls straining heart and blood vessels.',
-      keyFactors: 'Excess sodium, chronic stress, lack of exercise, genetics',
-    },
-    {
-      id: 'metabolic-disease',
-      title: 'Metabolic Disease',
-      category: 'Systemic Health',
-      icon: Scale,
-      color: 'text-purple-600 bg-purple-50 border-purple-200',
-      badgeColor: 'bg-purple-100 text-purple-800',
-      summary: 'A cluster of abdominal obesity, high glucose, and lipid dysregulation.',
-      keyFactors: 'Visceral abdominal fat, insulin resistance, processed diets',
+      iconBg: 'bg-amber-50 text-amber-600 border-amber-100',
+      summary: 'Measures continuous elevated force against artery walls straining vital organs.',
+      keyFactors: 'High sodium intake, chronic stress, poor sleep, heredity',
     },
     {
       id: 'stroke',
-      title: 'Stroke',
-      category: 'Cerebrovascular Health',
+      title: 'Cerebrovascular Stroke',
+      category: 'Brain Circulation',
       icon: Brain,
-      color: 'text-blue-600 bg-blue-50 border-blue-200',
-      badgeColor: 'bg-blue-100 text-blue-800',
-      summary: 'Disruption of blood and oxygen flow to brain tissues caused by clots or bleeds.',
-      keyFactors: 'Uncontrolled hypertension, smoking, arterial plaque, diabetes',
+      iconBg: 'bg-blue-50 text-blue-600 border-blue-100',
+      summary: 'Determines susceptibility to disrupted arterial blood and oxygen flow to brain tissue.',
+      keyFactors: 'Unmanaged BP, atrial conditions, arterial stiffness, smoking',
+    },
+    {
+      id: 'metabolic-disease',
+      title: 'Metabolic Syndrome',
+      category: 'Systemic Health',
+      icon: Scale,
+      iconBg: 'bg-purple-50 text-purple-600 border-purple-100',
+      summary: 'Evaluates the dangerous cluster of abdominal adiposity, dyslipidemia, and glucose imbalance.',
+      keyFactors: 'Visceral abdominal fat, insulin resistance, ultra-processed diet',
     },
   ];
 
   const steps = [
     {
-      number: '01',
-      title: 'Enter Vitals & Lifestyle Metrics',
-      description:
-        'Input non-invasive metrics including BMI, blood pressure category, physical activity level, smoking, alcohol, and family medical background.',
+      step: '01',
+      title: 'Input Lifestyle Vitals',
+      description: 'Enter everyday non-invasive health parameters such as BMI, blood pressure, exercise frequency, sleep, and family medical background.',
     },
     {
-      number: '02',
-      title: 'Machine Learning Correlation',
-      description:
-        'Our trained predictive algorithm cross-evaluates your multi-variable health vector against clinical epidemiological risk patterns.',
+      step: '02',
+      title: 'Algorithmic Correlation',
+      description: 'The predictive system correlates multi-variable physiological parameters with clinical epidemiological risk patterns.',
     },
     {
-      number: '03',
-      title: 'Stratified Risk Score & Guidance',
-      description:
-        'Receive immediate risk level stratification (Low / Moderate / High), identified suspect condition, calculated probability %, and preventive action steps.',
+      step: '03',
+      title: 'Stratified Risk Score',
+      description: 'Receive instant stratified risk assessment (Low, Moderate, High) with suspect condition highlights and personalized prevention guidance.',
     },
   ];
 
   const benchmarks = [
     {
-      label: 'Healthy BMI Range',
+      label: 'Optimal Body Mass Index',
       value: '18.5 – 24.9',
       unit: 'kg/m²',
-      desc: 'Optimal body mass index',
+      description: 'Standard metabolic baseline',
     },
     {
       label: 'Target Blood Pressure',
       value: '< 120 / 80',
       unit: 'mmHg',
-      desc: 'Normal systolic & diastolic',
+      description: 'Normal systolic & diastolic',
     },
     {
-      label: 'Aerobic Physical Activity',
+      label: 'Aerobic Exercise',
       value: '150+',
-      unit: 'mins/week',
-      desc: 'Moderate intensity exercise',
+      unit: 'mins / week',
+      description: 'Moderate cardio target',
     },
     {
-      label: 'Sodium Restriction',
-      value: '< 2,000',
-      unit: 'mg/day',
-      desc: 'Recommended cardiovascular intake',
+      label: 'Preventable Burden',
+      value: 'Up to 80%',
+      unit: 'of cases',
+      description: 'Via early lifestyle action',
     },
   ];
 
   return (
-    <div className="space-y-8">
-      {/* 1. Hero Section */}
-      <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/50 p-6 sm:p-10 shadow-xs">
-        <div className="max-w-3xl space-y-4">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/90 px-3 py-1 text-xs font-semibold text-blue-700 shadow-xs">
-            <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-            <span>Preventive AI Healthcare &bull; Machine Learning Risk Stratification</span>
-          </div>
+    <div className="space-y-16 sm:space-y-24 py-2">
+      {/* 1. Hero Section - Spacious, Airy, Premium */}
+      <section className="relative pt-4 sm:pt-8 pb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          {/* Left Hero Content */}
+          <div className="lg:col-span-7 space-y-6">
+            {/* Clean category kicker (no pill boxes) */}
+            <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 tracking-wide uppercase">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+              <span>Preventive Health Intelligence</span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="text-slate-500 font-medium normal-case">Machine Learning Risk Stratification</span>
+            </div>
 
-          {/* Main Hero Headline */}
-          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
-            Early Chronic Disease Risk Prediction Using Lifestyle &amp; Medical History
-          </h1>
+            {/* Main Headline */}
+            <h1 className="text-3xl sm:text-5xl lg:text-[3.25rem] font-extrabold text-slate-900 tracking-tight leading-[1.15]">
+              Early Chronic Disease Risk Prediction
+            </h1>
 
-          {/* Subtitle */}
-          <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-2xl">
-            Evaluate your personal risk profile for <strong>5 critical chronic conditions</strong>. Our machine learning system analyzes daily habits, physiological vitals, and family heredity to support proactive healthcare before symptoms manifest.
-          </p>
+            {/* Subtitle with comfortable line height */}
+            <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl">
+              Evaluate your personal vulnerability across <strong>5 critical non-communicable conditions</strong> using everyday lifestyle habits, physiological vitals, and family medical history.
+            </p>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              type="button"
-              id="btn-check-risk"
-              onClick={onCheckRisk}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 text-sm sm:text-base shadow-sm hover:shadow transition-all cursor-pointer"
-            >
-              <span>Start Risk Assessment</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-
-            {onLearnMore && (
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={onLearnMore}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-5 py-3 text-sm sm:text-base shadow-xs transition-all cursor-pointer"
+                id="btn-check-risk"
+                onClick={onCheckRisk}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold px-6 py-3.5 text-base shadow-sm hover:shadow-md transition-all cursor-pointer"
               >
-                <span>About the 5 Diseases</span>
-                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <span>Start Risk Assessment</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
-            )}
 
-            {onNavigateToAuth && (
-              <button
-                type="button"
-                onClick={onNavigateToAuth}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold px-4 py-3 text-sm sm:text-base shadow-2xs transition-all cursor-pointer"
-              >
-                <Database className="w-4 h-4 text-emerald-600" />
-                <span>Supabase Auth &amp; Data Portal</span>
-              </button>
-            )}
+              {onNavigateToAuth && (
+                <button
+                  type="button"
+                  id="btn-hero-auth"
+                  onClick={onNavigateToAuth}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:scale-[0.99] text-slate-800 font-semibold px-5 py-3.5 text-base shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+                >
+                  <Database className="w-4 h-4 text-emerald-600" />
+                  <span>Patient Login / Sign Up</span>
+                </button>
+              )}
+
+              {onLearnMore && (
+                <button
+                  type="button"
+                  onClick={onLearnMore}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-blue-600 px-3 py-2 transition-colors cursor-pointer"
+                >
+                  <span>Learn about diseases</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Clean metadata strip - Unboxed text with subtle typographic separators */}
+            <div className="pt-4 border-t border-slate-200/80 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                5 Conditions Assessed
+              </span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                Instant 2-Minute Feedback
+              </span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                <Lock className="w-3.5 h-3.5 text-slate-600" />
+                Non-Invasive &amp; Confidential
+              </span>
+            </div>
           </div>
 
-          {/* Trust Indicators Pill List */}
-          <div className="pt-4 border-t border-blue-100/80 flex flex-wrap gap-y-2 gap-x-5 text-xs text-slate-600 font-medium">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              5 Chronic Diseases Evaluated
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Non-Invasive Lifestyle Indicators
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Instant Predictive Feedback
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              100% Free &amp; Educational
-            </span>
+          {/* Right Hero: Clean, Elegant Live Risk Preview Card */}
+          <div className="lg:col-span-5">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">Predictive Assessment Preview</div>
+                    <div className="text-[11px] text-slate-500">Clinical Lifestyle Multi-Vector Model</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
+                  Active Demo
+                </span>
+              </div>
+
+              {/* Sample Profile Metrics */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Body Mass Index</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">23.4 <span className="text-xs font-normal text-slate-500">kg/m²</span></div>
+                  <div className="text-[11px] text-emerald-600 font-medium">Healthy Weight Range</div>
+                </div>
+                <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Blood Pressure</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">118/76 <span className="text-xs font-normal text-slate-500">mmHg</span></div>
+                  <div className="text-[11px] text-emerald-600 font-medium">Optimal Normotensive</div>
+                </div>
+                <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Weekly Exercise</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">180 <span className="text-xs font-normal text-slate-500">mins</span></div>
+                  <div className="text-[11px] text-blue-600 font-medium">Active Lifestyle</div>
+                </div>
+                <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Hereditary Factor</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">Moderate</div>
+                  <div className="text-[11px] text-amber-600 font-medium">Type 2 Diabetes History</div>
+                </div>
+              </div>
+
+              {/* Calculated Result Snapshot */}
+              <div className="bg-slate-900 text-white rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Overall Evaluated Risk</div>
+                  <div className="text-base font-bold text-white mt-0.5">Low Cumulative Risk</div>
+                  <div className="text-xs text-slate-300">Preventive recommendations ready</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-emerald-400">89%</div>
+                  <div className="text-[10px] text-slate-400 font-medium">Health Index</div>
+                </div>
+              </div>
+
+              {/* Action prompt */}
+              <button
+                type="button"
+                onClick={onCheckRisk}
+                className="w-full py-2.5 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200/80"
+              >
+                <span>Calculate Your Own Health Parameters</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 2. Target 5 Diseases Grid */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-600" />
-              <span>5 Target Conditions Evaluated</span>
+      {/* 2. Target 5 Conditions - Clean, Spacious Cards */}
+      <section className="space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="max-w-2xl space-y-2">
+            <div className="text-xs font-semibold text-blue-700 tracking-wide uppercase">
+              Target Health Domains
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+              5 Critical Chronic Conditions Evaluated
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              The model evaluates lifestyle risk correlations for these key non-communicable diseases.
+            <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+              Our predictive algorithms evaluate multidimensional lifestyle habits and physiological indicators correlated with these leading non-communicable diseases.
             </p>
           </div>
+
           {onLearnMore && (
             <button
               type="button"
               onClick={onLearnMore}
-              className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer shrink-0"
             >
-              <span>View full medical details</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <span>View clinical details</span>
+              <ChevronRight className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Clean, balanced grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {targetDiseases.map((d) => {
             const Icon = d.icon;
             return (
               <div
                 key={d.id}
-                className="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-xs transition-all space-y-3 flex flex-col justify-between"
+                className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-6 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between space-y-5"
               >
-                <div className="space-y-2.5">
+                <div className="space-y-3.5">
                   <div className="flex items-center justify-between">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center border ${d.color}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${d.iconBg}`}>
                       <Icon className="w-5 h-5" />
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${d.badgeColor}`}>
+                    <span className="text-xs font-medium text-slate-500">
                       {d.category}
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-slate-900 text-base">
-                    {d.title}
-                  </h3>
-
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    {d.summary}
-                  </p>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-lg">
+                      {d.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-1.5">
+                      {d.summary}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-                  <strong className="text-slate-700">Primary Triggers:</strong>{' '}
-                  <span>{d.keyFactors}</span>
+                <div className="pt-3 border-t border-slate-100 text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Key Triggers:</span>{' '}
+                  <span className="text-slate-600">{d.keyFactors}</span>
                 </div>
               </div>
             );
           })}
 
-          {/* 6th Card: Action prompt */}
-          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-xl p-5 flex flex-col justify-between space-y-4 shadow-sm">
-            <div className="space-y-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full inline-block">
-                Predictive Model
-              </span>
-              <h3 className="font-bold text-lg text-white">
-                Find Out Your Risk Score
-              </h3>
-              <p className="text-xs text-blue-100 leading-relaxed">
-                Provide your parameters to generate a 3-tier risk score, pinpoint suspect condition vulnerability, and access lifestyle interventions.
-              </p>
+          {/* 6th Card: Simple, Elegant Action Card */}
+          <div className="bg-slate-900 text-white rounded-2xl p-6 flex flex-col justify-between space-y-5 shadow-xs">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-lg">
+                  Check Your Personal Risk
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mt-1.5">
+                  Answer non-invasive questions about physical activity, diet, BP category, and family background to generate your stratified risk score.
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
               onClick={onCheckRisk}
-              className="w-full bg-white text-blue-700 hover:bg-blue-50 font-bold py-2.5 px-4 rounded-lg text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
+              className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-2xs"
             >
-              <span>Calculate Risk Now</span>
+              <span>Launch Prediction Form</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </section>
 
-      {/* 3. How It Works (3 Simple Steps) */}
-      <section className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 space-y-6">
-        <div className="text-center max-w-xl mx-auto space-y-1.5">
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+      {/* 3. How It Works - Clean 3-Step Process with Generous Spacing */}
+      <section className="bg-white border border-slate-200/80 rounded-2xl p-8 sm:p-12 space-y-10 shadow-2xs">
+        <div className="max-w-xl mx-auto text-center space-y-2">
+          <div className="text-xs font-semibold text-blue-700 tracking-wide uppercase">
+            Simple Process
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
             How The Prediction System Works
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            From user input to actionable health guidance in three streamlined stages.
+          <p className="text-sm text-slate-600">
+            From everyday health inputs to stratified clinical guidance in three clear steps.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-10">
           {steps.map((st) => (
-            <div
-              key={st.number}
-              className="relative bg-slate-50 border border-slate-200/80 rounded-xl p-5 space-y-2.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-black text-blue-600/40">
-                  {st.number}
-                </span>
-                <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+            <div key={st.step} className="space-y-3">
+              <div className="text-3xl sm:text-4xl font-black text-blue-600/40">
+                {st.step}
               </div>
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">
                 {st.title}
               </h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
                 {st.description}
               </p>
             </div>
@@ -325,105 +393,114 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         </div>
       </section>
 
-      {/* 4. Clinical Benchmarks / Lifestyle Insights */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+      {/* 4. Clinical Benchmarks for Prevention */}
+      <section className="space-y-6">
+        <div className="space-y-1.5">
+          <div className="text-xs font-semibold text-blue-700 tracking-wide uppercase">
+            Clinical Indicators
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-blue-600" />
-            <span>Key Health Benchmarks for Prevention</span>
+            <span>Target Health Benchmarks</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Standard health targets that support long-term cardiovascular and metabolic longevity.
+            Standard clinical targets recommended for sustainable cardiovascular and metabolic wellness.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {benchmarks.map((b, idx) => (
             <div
               key={idx}
-              className="bg-white border border-slate-200 rounded-xl p-4 text-center space-y-1"
+              className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-1 shadow-2xs"
             >
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="text-[11px] font-semibold text-slate-500">
                 {b.label}
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold text-blue-600">
+              <div className="text-2xl font-extrabold text-blue-600 pt-1">
                 {b.value}
               </div>
-              <div className="text-[11px] font-bold text-slate-700">
+              <div className="text-xs font-semibold text-slate-700">
                 {b.unit}
               </div>
-              <div className="text-[10px] text-slate-400">
-                {b.desc}
+              <div className="text-[11px] text-slate-400 pt-0.5">
+                {b.description}
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 5. Why Early Detection Matters */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center">
-            <ShieldCheck className="w-4 h-4" />
+      {/* 5. Why Early Detection Matters - Clean, Calm Insights */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-2.5 shadow-2xs">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <ShieldCheck className="w-5 h-5" />
           </div>
-          <h3 className="font-bold text-slate-900 text-sm">80% Preventable</h3>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            The World Health Organization notes that up to 80% of premature heart disease, strokes, and type 2 diabetes can be prevented with early lifestyle modifications.
+          <h3 className="font-bold text-slate-900 text-base">80% Preventable</h3>
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            The World Health Organization notes that up to 80% of premature heart attacks, strokes, and type 2 diabetes can be prevented through early behavioral modifications.
           </p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
-          <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
-            <Stethoscope className="w-4 h-4" />
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-2.5 shadow-2xs">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <Stethoscope className="w-5 h-5" />
           </div>
-          <h3 className="font-bold text-slate-900 text-sm">Silent Progression</h3>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Hypertension and metabolic dysfunction often develop without noticeable symptoms for years. Risk estimation brings hidden physiological strains to light.
+          <h3 className="font-bold text-slate-900 text-base">Silent Progression</h3>
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            Hypertension and insulin resistance advance quietly for years without noticeable symptoms. Early lifestyle estimation brings subtle metabolic strain to light.
           </p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center">
-            <Info className="w-4 h-4" />
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-2.5 shadow-2xs">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Activity className="w-5 h-5" />
           </div>
-          <h3 className="font-bold text-slate-900 text-sm">Actionable Guidance</h3>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Instead of just a score, the platform provides evidence-based dietary, physical activity, and medical monitoring recommendations.
+          <h3 className="font-bold text-slate-900 text-base">Actionable Guidance</h3>
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            Rather than just a static probability number, the platform outputs evidence-based dietary, physical exercise, and medical monitoring recommendations.
           </p>
         </div>
       </section>
 
-      {/* 6. Bottom Banner CTA */}
-      <section className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-blue-50 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-5 text-center sm:text-left">
-        <div className="space-y-1.5 max-w-xl">
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-            Ready to check your personal risk profile?
+      {/* 6. Clean Bottom Banner CTA */}
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-8 sm:p-12 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
+        <div className="space-y-2 max-w-xl text-center sm:text-left">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+            Ready to evaluate your personalized risk profile?
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600">
-            Takes less than 2 minutes to fill out. You can also load sample data with one click to test the system immediately.
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Takes less than 2 minutes to complete. You can also load sample patient data with a single click to test the system immediately.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onCheckRisk}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 text-sm shadow-sm hover:shadow cursor-pointer transition-all shrink-0"
-        >
-          <span>Open Prediction Form</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onCheckRisk}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 text-sm shadow-sm hover:shadow transition-all cursor-pointer"
+          >
+            <span>Open Assessment Form</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </section>
 
-      {/* 7. Responsible Medical Disclaimer */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 space-y-1">
-        <div className="font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-          <span>Medical Notice &bull; Academic Demonstration</span>
+      {/* 7. Quiet, Responsible Medical Disclaimer */}
+      <div className="p-4 sm:p-5 rounded-xl border border-slate-200/70 bg-slate-50/80 text-slate-600 text-xs flex items-start gap-3">
+        <div className="w-5 h-5 text-slate-400 shrink-0 mt-0.5">
+          <ShieldCheck className="w-5 h-5" />
         </div>
-        <p className="text-slate-700 leading-relaxed text-[11px]">
-          The predictions provided by this platform are for educational and informational demonstration only and should not be considered a medical diagnosis. Users should consult a qualified healthcare professional for proper evaluation and personalized clinical advice.
-        </p>
+        <div className="space-y-0.5">
+          <div className="font-semibold text-slate-700 text-xs">
+            Medical &amp; Academic Notice
+          </div>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            The predictions generated by this platform are designed for educational, preventive awareness, and academic demonstration only. They do not constitute clinical diagnosis. Always consult a certified healthcare professional for personalized medical assessment.
+          </p>
+        </div>
       </div>
     </div>
   );
 };
-
