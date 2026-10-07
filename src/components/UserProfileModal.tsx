@@ -288,7 +288,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
 
         {/* Footer */}
         <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
-          <span>Records stored securely in local browser storage.</span>
+          <span>Your private health records are protected and confidential.</span>
           <button
             type="button"
             onClick={closeProfileModal}

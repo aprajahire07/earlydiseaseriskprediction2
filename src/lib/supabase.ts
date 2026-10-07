@@ -200,7 +200,7 @@ export async function syncAssessmentToSupabase(
       id: assessment.id,
       user_id: assessment.userId,
       user_email: user?.email || null,
-      user_name: user?.name || null,
+      user_name: assessment.fullName || user?.name || null,
       disease: assessment.disease,
       risk_level: assessment.riskLevel,
       probability: assessment.probability,
@@ -223,3 +223,70 @@ export async function syncAssessmentToSupabase(
     return { success: false, error: err?.message || 'Error saving assessment' };
   }
 }
+
+/**
+ * Fetch assessments belonging strictly to the authenticated user ID
+ */
+export async function fetchUserAssessmentsFromSupabase(userId: string): Promise<SavedAssessment[]> {
+  try {
+    const { data, error } = await supabase
+      .from('disease_assessments')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data.map((d: any) => {
+      const prob = Number(d.probability) || 30;
+      const computedIndex = Math.max(5, Math.min(98, Math.round(100 - prob)));
+      return {
+        id: d.id,
+        userId: d.user_id,
+        fullName: d.user_name || undefined,
+        date: d.created_at,
+        disease: d.disease || 'General Health',
+        riskLevel: (d.risk_level === 'High' || d.risk_level === 'Moderate' || d.risk_level === 'Low')
+          ? d.risk_level
+          : 'Low',
+        probability: prob,
+        healthIndex: computedIndex,
+        bmi: Number(d.bmi) || 22,
+        bloodPressure: d.blood_pressure || '120/80',
+        physicalActivity: d.physical_activity || 'Moderate',
+        smoking: d.smoking || 'None',
+        alcohol: d.alcohol || 'None',
+        familyHistory: d.family_history || 'None',
+        recommendations: Array.isArray(d.recommendations) ? d.recommendations : [],
+        checkedAreas: [
+          'Type 2 Diabetes',
+          'Heart Health',
+          'Blood Pressure',
+          'Stroke Risk',
+          'Metabolic Health',
+        ],
+      };
+    });
+  } catch (err) {
+    console.warn('Could not query assessments from Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Update user name in Supabase user_profiles
+ */
+export async function updateUserNameInSupabase(userId: string, newName: string): Promise<{ success: boolean }> {
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ full_name: newName.trim() })
+      .eq('id', userId);
+    return { success: !error };
+  } catch {
+    return { success: false };
+  }
+}
+

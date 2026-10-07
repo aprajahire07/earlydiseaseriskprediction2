@@ -13,15 +13,19 @@ export interface User {
 export interface SavedAssessment {
   id: string;
   userId: string;
+  fullName?: string;
   date: string;
   disease: string;
   riskLevel: 'Low' | 'Moderate' | 'High';
   probability: number;
+  healthIndex?: number;
   bmi: number;
   bloodPressure: string;
   physicalActivity: string;
   smoking: string;
   alcohol: string;
   familyHistory: string;
+  bloodSugarLevel?: string;
   recommendations: string[];
+  checkedAreas?: string[];
 }

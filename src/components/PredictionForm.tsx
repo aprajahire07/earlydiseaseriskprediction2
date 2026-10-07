@@ -1,250 +1,337 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Bookmark, BookmarkCheck, History, LogIn, CheckCircle2 } from 'lucide-react';
+import {
+  HeartPulse,
+  Activity,
+  CheckCircle2,
+  ArrowRight,
+  Sparkles,
+  User as UserIcon,
+  ShieldCheck,
+  RotateCcw,
+  AlertCircle,
+  Scale,
+  Ruler,
+  Check,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+} from 'lucide-react';
 
-// Structure of the response expected from the FastAPI backend
-interface PredictionResult {
-  risk_percentage?: number | string;
-  risk_score?: number | string;
-  probability?: number | string;
+// Exact structure expected from Render ML backend
+interface BackendPredictionResponse {
+  risk_percentage?: string | number;
+  risk_score?: string | number;
+  probability?: string | number;
+  health_score?: string | number;
   risk_level?: string;
   prediction?: string;
   target_disease?: string;
-  suspected_disease?: string;
-  primary_risk?: string;
   disease?: string;
-  recommendation?: string | string[];
-  recommendations?: string | string[];
-  message?: string;
+  primary_risk?: string;
+  recommendations?: string[] | string;
+  recommendation?: string[] | string;
 }
 
-const DEFAULT_API_ENDPOINT = 'https://disease-risk-api-e5o7.onrender.com/predict';
-
-// Local Fallback Disease Risk Calculation Engine
-function calculateLocalRisk(params: {
-  age: number;
-  gender: string;
-  bmi: number;
-  bloodPressure: string;
-  smokingHabit: string;
-  alcoholConsumption: string;
-  physicalActivity: string;
-  familyMedicalHistory: string[];
-  bloodSugarLevel: string;
-}): PredictionResult {
-  let score = 15; // base score
-
-  // Age factor
-  if (params.age >= 60) score += 20;
-  else if (params.age >= 45) score += 14;
-  else if (params.age >= 35) score += 7;
-
-  // BMI factor
-  if (params.bmi >= 30) score += 18;
-  else if (params.bmi >= 25) score += 10;
-  else if (params.bmi < 18.5) score += 4;
-
-  // Blood Pressure factor
-  const bp = params.bloodPressure.toLowerCase();
-  if (bp.includes('stage 2')) score += 24;
-  else if (bp.includes('stage 1')) score += 16;
-  else if (bp.includes('elevated')) score += 8;
-
-  // Smoking factor
-  const smoking = params.smokingHabit.toLowerCase();
-  if (smoking.includes('regular')) score += 20;
-  else if (smoking.includes('occasional')) score += 10;
-
-  // Alcohol factor
-  const alc = params.alcoholConsumption.toLowerCase();
-  if (alc.includes('regular')) score += 12;
-  else if (alc.includes('occasional')) score += 5;
-
-  // Physical Activity factor
-  const act = params.physicalActivity.toLowerCase();
-  if (act.includes('sedentary')) score += 15;
-  else if (act.includes('active')) score -= 10;
-  else if (act.includes('moderate')) score -= 5;
-
-  // Family Medical History
-  const history = params.familyMedicalHistory;
-  if (history.includes('Heart Disease')) score += 15;
-  if (history.includes('Diabetes')) score += 12;
-  if (history.includes('High Blood Pressure')) score += 10;
-  if (history.includes('High Cholesterol')) score += 8;
-
-  // Blood Sugar Level
-  const sugar = params.bloodSugarLevel.toLowerCase();
-  if (sugar.includes('high') || sugar.includes('diabetic') || parseInt(sugar, 10) > 140) score += 18;
-  else if (parseInt(sugar, 10) > 100) score += 8;
-
-  // Clamp score to 5% - 95%
-  score = Math.min(Math.max(score, 5), 95);
-
-  // Determine Risk Level
-  let riskLevel = 'Low';
-  if (score >= 60) riskLevel = 'High';
-  else if (score >= 35) riskLevel = 'Moderate';
-
-  // Determine Suspected Target Disease
-  let targetDisease = 'General Lifestyle Health Risk';
-  if (history.includes('Heart Disease') || bp.includes('stage') || smoking.includes('regular')) {
-    targetDisease = 'Cardiovascular Disease / Hypertension';
-  } else if (history.includes('Diabetes') || sugar.includes('high') || params.bmi >= 28) {
-    targetDisease = 'Type 2 Diabetes / Metabolic Risk';
-  } else if (params.bmi >= 30 && act.includes('sedentary')) {
-    targetDisease = 'Metabolic Syndrome & Obesity Risk';
-  } else if (bp.includes('elevated') || bp.includes('stage 1')) {
-    targetDisease = 'Early Pre-Hypertension';
-  }
-
-  // Generate Recommendations
-  const recs: string[] = [];
-  if (score >= 60) {
-    recs.push('Consult a licensed healthcare physician for a comprehensive clinical cardiovascular and metabolic screening.');
-  }
-  if (params.bmi >= 25) {
-    recs.push('Adopt a nutrient-dense, calorie-conscious diet and aim for a healthy BMI between 18.5 and 24.9.');
-  }
-  if (bp.includes('stage') || bp.includes('elevated')) {
-    recs.push('Monitor systolic and diastolic blood pressure twice weekly and restrict sodium intake to under 2,000 mg/day.');
-  }
-  if (smoking.includes('regular') || smoking.includes('occasional')) {
-    recs.push('Enroll in a smoking cessation program to significantly reduce vascular disease and plaque buildup.');
-  }
-  if (act.includes('sedentary')) {
-    recs.push('Incorporate at least 150 minutes of moderate aerobic exercise (such as brisk walking or cycling) each week.');
-  }
-  if (history.includes('Diabetes') || sugar.includes('high')) {
-    recs.push('Schedule fasting blood glucose and HbA1c lab tests to detect early glycemic dysregulation.');
-  }
-  if (recs.length === 0) {
-    recs.push('Continue maintaining balanced nutrition, adequate hydration, regular physical activity, and routine annual health checkups.');
-  }
-
-  return {
-    risk_percentage: `${score.toFixed(1)}%`,
-    risk_score: score,
-    risk_level: riskLevel,
-    target_disease: targetDisease,
-    recommendations: recs,
-    prediction: riskLevel,
-  };
+// Normalized prediction displayed in UI
+interface DisplayPrediction {
+  risk_percentage: string;
+  risk_level: string;
+  target_disease: string;
+  recommendations: string[];
+  health_index: number;
 }
 
-export const PredictionForm: React.FC = () => {
-  // Form input states
+// Render ML Backend URL configuration
+const RENDER_BASE_URL = 'https://disease-risk-api-e5o7.onrender.com';
+const RENDER_PREDICT_URL = `${RENDER_BASE_URL}/predict`;
+const REQUEST_TIMEOUT_MS = 25000;
+
+interface PredictionFormProps {
+  onNavigateToHealth?: () => void;
+}
+
+type BackendStatus = 'checking' | 'online' | 'offline';
+type ButtonState = 'ready' | 'checking' | 'processing' | 'success' | 'error';
+
+export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHealth }) => {
+  const { user, isAuthenticated, saveAssessment, openAuthModal } = useAuth();
+
+  // Section 1: About You
+  const [fullName, setFullName] = useState<string>(user?.name || '');
   const [age, setAge] = useState<string>('');
   const [gender, setGender] = useState<string>('');
+
+  // Section 2: Body Measurements
+  const [heightCm, setHeightCm] = useState<string>('');
+  const [weightKg, setWeightKg] = useState<string>('');
   const [bmi, setBmi] = useState<string>('');
+
+  // Section 3: Vitals & Everyday Health
   const [bloodPressure, setBloodPressure] = useState<string>('');
   const [smokingHabit, setSmokingHabit] = useState<string>('');
   const [alcoholConsumption, setAlcoholConsumption] = useState<string>('');
   const [physicalActivity, setPhysicalActivity] = useState<string>('');
+
+  // Section 4: Family Health History & Blood Sugar
   const [familyMedicalHistory, setFamilyMedicalHistory] = useState<string[]>([]);
   const [bloodSugarLevel, setBloodSugarLevel] = useState<string>('');
 
-  // Endpoint configuration
-  const [apiUrl] = useState<string>(DEFAULT_API_ENDPOINT);
-
-  // Request & Response states
-  const { user, isAuthenticated, saveAssessment, openAuthModal, openProfileModal } = useAuth();
-  const [isSaved, setIsSaved] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [result, setResult] = useState<PredictionResult | null>(null);
-  const [resultSource, setResultSource] = useState<'api' | 'fallback'>('api');
+  // Backend Connectivity & Processing State
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
+  const [buttonState, setButtonState] = useState<ButtonState>('ready');
+  const [backendError, setBackendError] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string>('');
-  const [apiError, setApiError] = useState<string>('');
 
-  // Handle family history checkbox toggle
-  const handleCheckboxChange = (disease: string) => {
-    if (familyMedicalHistory.includes(disease)) {
-      setFamilyMedicalHistory(familyMedicalHistory.filter((item) => item !== disease));
-    } else {
-      setFamilyMedicalHistory([...familyMedicalHistory, disease]);
+  // Result state — ONLY populated from a successful Render API response
+  const [result, setResult] = useState<DisplayPrediction | null>(null);
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+
+  // Pre-fill user name if logged in
+  useEffect(() => {
+    if (user?.name && !fullName) {
+      setFullName(user.name);
     }
-  };
+  }, [user?.name]);
 
-  // Helper to load sample testing data
-  const handleLoadSample = () => {
-    setAge('45');
-    setGender('Male');
-    setBmi('26.4');
-    setBloodPressure('Stage 1 Hypertension');
-    setSmokingHabit('Occasional');
-    setAlcoholConsumption('Occasional');
-    setPhysicalActivity('Sedentary');
-    setFamilyMedicalHistory(['High Blood Pressure', 'Diabetes']);
-    setBloodSugarLevel('110 mg/dL');
-    setValidationError('');
-    setApiError('');
-    setResult(null);
-  };
+  // Check Render Backend Availability
+  const checkBackendHealth = useCallback(async (): Promise<boolean> => {
+    setBackendStatus('checking');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-  // Handle form submission - renders live prediction immediately on first click
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+      const res = await fetch(`${RENDER_BASE_URL}/`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
 
-    // Reset previous messages
-    setValidationError('');
-    setApiError('');
+      clearTimeout(timeoutId);
 
-    // Validation check
-    if (!age || !gender || !bmi || !bloodPressure || !smokingHabit || !alcoholConsumption || !physicalActivity) {
-      setValidationError('Please fill in all the required fields marked with *');
+      if (res.ok) {
+        setBackendStatus('online');
+        return true;
+      } else {
+        setBackendStatus('offline');
+        return false;
+      }
+    } catch {
+      setBackendStatus('offline');
+      return false;
+    }
+  }, []);
+
+  // Check health on mount
+  useEffect(() => {
+    checkBackendHealth();
+  }, [checkBackendHealth]);
+
+  // Automatic BMI Calculation whenever height or weight changes (read-only)
+  useEffect(() => {
+    const h = parseFloat(heightCm);
+    const w = parseFloat(weightKg);
+
+    if (h > 0 && w > 0) {
+      const heightMeters = h / 100;
+      const calculatedBmi = w / (heightMeters * heightMeters);
+      if (calculatedBmi > 10 && calculatedBmi < 90) {
+        setBmi(calculatedBmi.toFixed(1));
+      } else {
+        setBmi('');
+      }
+    } else {
+      setBmi('');
+    }
+  }, [heightCm, weightKg]);
+
+  // Derived BMI info for visual indicator
+  const bmiDetails = useMemo(() => {
+    const val = parseFloat(bmi);
+    if (!val || isNaN(val)) return null;
+
+    let category = 'Healthy range';
+    let color = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+
+    if (val < 18.5) {
+      category = 'Underweight';
+      color = 'text-sky-700 bg-sky-50 border-sky-200';
+    } else if (val <= 24.9) {
+      category = 'Healthy range';
+      color = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    } else if (val <= 29.9) {
+      category = 'Overweight';
+      color = 'text-amber-700 bg-amber-50 border-amber-200';
+    } else {
+      category = 'Obesity range';
+      color = 'text-rose-700 bg-rose-50 border-rose-200';
+    }
+
+    const minScale = 15;
+    const maxScale = 38;
+    const clamped = Math.max(minScale, Math.min(maxScale, val));
+    const percentage = ((clamped - minScale) / (maxScale - minScale)) * 100;
+
+    return {
+      value: val,
+      category,
+      color,
+      percentage: Math.max(4, Math.min(96, percentage)),
+    };
+  }, [bmi]);
+
+  // Dynamic step progress (1 to 4)
+  const currentStep = useMemo(() => {
+    let step = 1;
+    const section1Filled = !!(age && gender);
+    const section2Filled = !!(heightCm && weightKg && bmi);
+    const section3Filled = !!(bloodPressure && smokingHabit && alcoholConsumption && physicalActivity);
+
+    if (section1Filled) step = 2;
+    if (section1Filled && section2Filled) step = 3;
+    if (section1Filled && section2Filled && section3Filled) step = 4;
+    return step;
+  }, [age, gender, heightCm, weightKg, bmi, bloodPressure, smokingHabit, alcoholConsumption, physicalActivity]);
+
+  // Family history chip toggling
+  const handleToggleFamilyCondition = (condition: string) => {
+    if (condition === 'None of these') {
+      if (familyMedicalHistory.includes('None of these')) {
+        setFamilyMedicalHistory([]);
+      } else {
+        setFamilyMedicalHistory(['None of these']);
+      }
       return;
     }
 
-    const numericAge = Number(age) || 0;
-    const numericBmi = parseFloat(bmi) || 0;
+    const withoutNone = familyMedicalHistory.filter((c) => c !== 'None of these');
+    if (withoutNone.includes(condition)) {
+      setFamilyMedicalHistory(withoutNone.filter((c) => c !== condition));
+    } else {
+      setFamilyMedicalHistory([...withoutNone, condition]);
+    }
+  };
 
-    setLoading(true);
-    setLoadingMessage('Analyzing lifestyle vitals and calculating risk...');
+  // Helper to load sample test inputs (DOES NOT TRIGGER PREDICTION OR FALLBACK)
+  const handleLoadSample = () => {
+    if (!fullName) setFullName(user?.name || 'Alex Morgan');
+    setAge('42');
+    setGender('Male');
+    setHeightCm('175');
+    setWeightKg('78');
+    setBloodPressure('Stage 1 Hypertension (130-139/80-89 mmHg)');
+    setSmokingHabit('Occasional');
+    setAlcoholConsumption('Moderate');
+    setPhysicalActivity('Moderate');
+    setFamilyMedicalHistory(['High Blood Pressure', 'Diabetes']);
+    setBloodSugarLevel('Elevated (105 mg/dL)');
+    setValidationError('');
+    setBackendError(false);
+    setResult(null);
+    setIsSaved(false);
+    setButtonState('ready');
+  };
 
-    // Calculate instant, high-precision risk using our clinical model
-    const localData = calculateLocalRisk({
-      age: numericAge,
+  // Form submission: STRICTLY calls Render ML backend
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setValidationError('');
+    setBackendError(false);
+
+    // 1. Frontend Input Validation
+    if (!age) {
+      setValidationError('Please enter your age.');
+      return;
+    }
+    const numAge = parseInt(age, 10);
+    if (isNaN(numAge) || numAge < 1 || numAge > 120) {
+      setValidationError('Please enter a valid age between 1 and 120.');
+      return;
+    }
+
+    if (!gender) {
+      setValidationError('Please select your biological sex.');
+      return;
+    }
+
+    if (!heightCm) {
+      setValidationError('Enter your height so we can calculate BMI.');
+      return;
+    }
+    const numHeight = parseFloat(heightCm);
+    if (isNaN(numHeight) || numHeight < 60 || numHeight > 260) {
+      setValidationError('Please check your height measurement (enter between 60 and 260 cm).');
+      return;
+    }
+
+    if (!weightKg) {
+      setValidationError('Enter your weight so we can calculate BMI.');
+      return;
+    }
+    const numWeight = parseFloat(weightKg);
+    if (isNaN(numWeight) || numWeight < 20 || numWeight > 350) {
+      setValidationError('Please check your weight measurement (enter between 20 and 350 kg).');
+      return;
+    }
+
+    if (!bmi) {
+      setValidationError('Unable to calculate BMI. Please verify height and weight.');
+      return;
+    }
+
+    if (!bloodPressure) {
+      setValidationError('Please select your blood pressure category.');
+      return;
+    }
+
+    if (!smokingHabit) {
+      setValidationError('Please tell us if you smoke.');
+      return;
+    }
+
+    if (!alcoholConsumption) {
+      setValidationError('Please tell us how often you drink alcohol.');
+      return;
+    }
+
+    if (!physicalActivity) {
+      setValidationError('Please select how active you are.');
+      return;
+    }
+
+    const numericBmi = parseFloat(bmi) || 24;
+
+    // Reset any previous prediction result — NEVER show old data
+    setResult(null);
+    setIsSaved(false);
+    setButtonState('processing');
+
+    // 2. Prepare payload for Render ML backend
+    const familyStr =
+      familyMedicalHistory.length > 0 && !familyMedicalHistory.includes('None of these')
+        ? familyMedicalHistory.join(', ')
+        : 'None';
+
+    const payload = {
+      age: numAge,
       gender,
       bmi: numericBmi,
-      bloodPressure,
-      smokingHabit,
-      alcoholConsumption,
-      physicalActivity,
-      familyMedicalHistory,
-      bloodSugarLevel,
-    });
-
-    // Prepare JSON payload for FastAPI /predict endpoint
-    const payload = {
-      age: numericAge,
-      gender: gender,
-      bmi: numericBmi,
       blood_pressure: bloodPressure,
-      bloodPressure: bloodPressure,
-      smoking_habit: smokingHabit,
-      smokingHabit: smokingHabit,
-      alcohol_consumption: alcoholConsumption,
-      alcoholConsumption: alcoholConsumption,
+      smoking: smokingHabit,
+      alcohol: alcoholConsumption,
       physical_activity: physicalActivity,
-      physicalActivity: physicalActivity,
-      family_medical_history: familyMedicalHistory,
-      familyMedicalHistory: familyMedicalHistory,
-      blood_sugar_level: bloodSugarLevel || 'Normal',
-      bloodSugarLevel: bloodSugarLevel || 'Normal',
+      family_history: familyStr,
+      blood_sugar: bloodSugarLevel.trim() || 'Normal',
     };
 
-    // Try live remote endpoint with a quick 1.5s timeout; seamlessly render on first click without waiting
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-      const response = await fetch(apiUrl.trim(), {
+      const response = await fetch(RENDER_PREDICT_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -252,28 +339,122 @@ export const PredictionForm: React.FC = () => {
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const data: PredictionResult = await response.json();
-        setResult(data);
-        setResultSource('api');
-      } else {
-        setResult(localData);
-        setResultSource('fallback');
+      // 3. HTTP status validation: If response is not ok, FAIL. NEVER fallback.
+      if (!response.ok) {
+        throw new Error(`Backend returned status ${response.status}`);
       }
+
+      // 4. JSON parsing validation
+      const data: BackendPredictionResponse = await response.json();
+
+      if (!data || typeof data !== 'object') {
+        throw new Error('Malformed backend response');
+      }
+
+      // 5. Response field validation: Required fields must exist
+      const rawRiskLevel = data.risk_level || data.prediction;
+      const rawRiskPercentage = data.risk_percentage ?? data.probability ?? data.risk_score;
+      const rawTargetDisease = data.target_disease || data.disease || data.primary_risk;
+      const rawRecs = data.recommendations ?? data.recommendation;
+
+      if (!rawRiskLevel || rawRiskPercentage === undefined || rawRiskPercentage === null || !rawTargetDisease) {
+        throw new Error('Backend response missing required prediction fields');
+      }
+
+      // Format recommendations safely
+      const formattedRecs: string[] = Array.isArray(rawRecs)
+        ? rawRecs.map(String)
+        : typeof rawRecs === 'string' && rawRecs.trim().length > 0
+        ? [rawRecs]
+        : ['Maintain balanced nutrition, stay active, and schedule routine clinical checkups.'];
+
+      // Derive health index from backend risk percentage
+      const percentNum = parseFloat(String(rawRiskPercentage).replace('%', '')) || 25;
+      const healthIdx = Math.max(5, Math.min(98, Math.round(100 - percentNum)));
+
+      const displayResult: DisplayPrediction = {
+        risk_percentage: String(rawRiskPercentage).includes('%') ? String(rawRiskPercentage) : `${rawRiskPercentage}%`,
+        risk_level: String(rawRiskLevel),
+        target_disease: String(rawTargetDisease),
+        recommendations: formattedRecs,
+        health_index: healthIdx,
+      };
+
+      // 6. SUCCESS: Render backend provided valid prediction
+      setResult(displayResult);
+      setBackendStatus('online');
+      setButtonState('success');
+
+      // 7. ONLY AFTER SUCCESSFUL RENDER RESPONSE: Save to Supabase
+      if (isAuthenticated && user) {
+        const calculatedRiskLevel: 'Low' | 'Moderate' | 'High' =
+          String(rawRiskLevel).toLowerCase().includes('high')
+            ? 'High'
+            : String(rawRiskLevel).toLowerCase().includes('moderate') || String(rawRiskLevel).toLowerCase().includes('medium')
+            ? 'Moderate'
+            : 'Low';
+
+        try {
+          await saveAssessment({
+            fullName: fullName.trim() || user.name,
+            disease: String(rawTargetDisease),
+            riskLevel: calculatedRiskLevel,
+            probability: percentNum,
+            healthIndex: healthIdx,
+            bmi: numericBmi,
+            bloodPressure,
+            physicalActivity,
+            smoking: smokingHabit,
+            alcohol: alcoholConsumption,
+            familyHistory: familyStr,
+            bloodSugarLevel: bloodSugarLevel || 'Normal',
+            recommendations: formattedRecs,
+            checkedAreas: [
+              'Type 2 Diabetes',
+              'Heart Health',
+              'Blood Pressure',
+              'Stroke Risk',
+              'Metabolic Health',
+            ],
+          });
+          setIsSaved(true);
+        } catch (saveErr) {
+          console.warn('Supabase assessment record save warning:', saveErr);
+        }
+      }
+
+      // Scroll to result card
+      setTimeout(() => {
+        const el = document.getElementById('assessment-result-card');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     } catch {
-      // Immediate live rendering - zero waiting, zero error popups
-      setResult(localData);
-      setResultSource('fallback');
-    } finally {
-      setLoading(false);
+      // 8. RENDER BACKEND FAILED: NO PREDICTION, NO FALLBACK, NO SUPABASE SAVE
+      setResult(null);
       setIsSaved(false);
+      setBackendStatus('offline');
+      setBackendError(true);
+      setButtonState('error');
+
+      // Scroll smoothly to the error card
+      setTimeout(() => {
+        const el = document.getElementById('backend-unavailable-card');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     }
   };
 
   // Reset form
   const handleReset = () => {
+    if (!user) setFullName('');
     setAge('');
     setGender('');
+    setHeightCm('');
+    setWeightKg('');
     setBmi('');
     setBloodPressure('');
     setSmokingHabit('');
@@ -283,448 +464,743 @@ export const PredictionForm: React.FC = () => {
     setBloodSugarLevel('');
     setResult(null);
     setValidationError('');
-    setApiError('');
+    setBackendError(false);
+    setIsSaved(false);
+    setButtonState('ready');
   };
 
-  // Format percentage helper
-  const getDisplayPercentage = (res: PredictionResult): string => {
-    const val = res.risk_percentage ?? res.risk_score ?? res.probability;
-    if (val === undefined || val === null) return 'N/A';
-    if (typeof val === 'number') {
-      // If decimal between 0 and 1, convert to %
-      if (val <= 1 && val > 0) {
-        return `${(val * 100).toFixed(1)}%`;
-      }
-      return `${val}%`;
-    }
-    return String(val).includes('%') ? String(val) : `${val}%`;
-  };
-
-  // Format risk level helper
-  const getDisplayLevel = (res: PredictionResult): string => {
-    return res.risk_level || res.prediction || 'Assessed';
-  };
-
-  // Format target/suspected disease helper
-  const getTargetDisease = (res: PredictionResult): string => {
-    return res.target_disease || res.suspected_disease || res.primary_risk || res.disease || 'N/A';
-  };
-
-  // Format recommendations helper
-  const getRecommendations = (res: PredictionResult): string[] => {
-    const rec = res.recommendation || res.recommendations || res.message;
-    if (!rec) return ['Maintain a balanced diet, exercise regularly, and consult a healthcare professional for regular check-ups.'];
-    if (Array.isArray(rec)) return rec;
-    return [rec];
-  };
-
-  // Badge color based on risk level
-  const getRiskColorClasses = (level: string) => {
-    const l = level.toLowerCase();
-    if (l.includes('high') || l.includes('severe') || l.includes('danger')) {
-      return 'border-red-500 bg-red-50 text-red-800';
-    }
-    if (l.includes('moderate') || l.includes('medium') || l.includes('warning')) {
-      return 'border-yellow-500 bg-yellow-50 text-yellow-800';
-    }
-    return 'border-green-500 bg-green-50 text-green-800';
-  };
+  const familyConditionsList = [
+    'Diabetes',
+    'High Blood Pressure',
+    'Heart Disease',
+    'High Cholesterol',
+    'None of these',
+  ];
 
   return (
-    <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6 border border-white/90 shadow-xl">
-      {/* Clean Header */}
-      <div className="border-b border-slate-200/60 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2.5 tracking-tight">
-            <span>Risk Prediction Form</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/80 px-2.5 py-0.5 rounded-full">
-              Non-Invasive
-            </span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Enter your lifestyle and health parameters to calculate disease risk factors.
-          </p>
-        </div>
+    <div className="space-y-8 max-w-3xl mx-auto py-2">
+      {/* Main Glass Container */}
+      <div className="glass-panel rounded-3xl p-6 sm:p-10 space-y-8 border border-white/90 shadow-xl backdrop-blur-xl relative">
+        {/* Ambient Top Glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-20 bg-blue-500/10 blur-2xl rounded-full pointer-events-none -z-10" />
 
-        <button
-          type="button"
-          onClick={handleLoadSample}
-          className="rounded-xl border border-slate-200 bg-white/80 hover:bg-white text-slate-700 px-3.5 py-2 text-xs cursor-pointer font-bold shadow-2xs hover:border-slate-300 transition-all self-start sm:self-auto"
-          title="Load sample values for testing"
-        >
-          Load Sample Data
-        </button>
-      </div>
-
-      {/* Validation Message */}
-      {validationError && (
-        <div className="border border-red-300 bg-red-50 text-red-700 text-xs p-2.5">
-          <strong>Validation Error:</strong> {validationError}
-        </div>
-      )}
-
-      {/* Form Fields */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        
-        {/* 1. Age */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Age *
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="120"
-            placeholder="Enter age (e.g. 45)"
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-            className="w-full border border-gray-300 p-2 text-sm"
-            required
-          />
-        </div>
-
-        {/* 2. Gender */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Gender *
-          </label>
-          <div className="flex gap-4 text-sm text-gray-700">
-            {['Male', 'Female', 'Other'].map((g) => (
-              <label key={g} className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="gender"
-                  value={g}
-                  checked={gender === g}
-                  onChange={(e) => setGender(e.target.value)}
-                />
-                <span>{g}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* 3. BMI */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            BMI (Body Mass Index) *
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            placeholder="Enter BMI (e.g. 24.5)"
-            value={bmi}
-            onChange={(e) => setBmi(e.target.value)}
-            className="w-full border border-gray-300 p-2 text-sm"
-            required
-          />
-        </div>
-
-        {/* 4. Blood Pressure Level */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Blood Pressure Level *
-          </label>
-          <select
-            value={bloodPressure}
-            onChange={(e) => setBloodPressure(e.target.value)}
-            className="w-full border border-gray-300 p-2 text-sm bg-white"
-            required
-          >
-            <option value="">-- Select Blood Pressure Level --</option>
-            <option value="Normal">Normal (&lt; 120/80 mmHg)</option>
-            <option value="Elevated">Elevated (120-129 / &lt; 80 mmHg)</option>
-            <option value="Stage 1 Hypertension">Stage 1 Hypertension (130-139 / 80-89 mmHg)</option>
-            <option value="Stage 2 Hypertension">Stage 2 Hypertension (&ge; 140 / &ge; 90 mmHg)</option>
-            <option value="Low Blood Pressure">Low Blood Pressure (&lt; 90/60 mmHg)</option>
-          </select>
-        </div>
-
-        {/* 5. Smoking Habit */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Smoking Habit *
-          </label>
-          <div className="flex gap-4 text-sm text-gray-700">
-            {['Non-Smoker', 'Occasional', 'Regular'].map((s) => (
-              <label key={s} className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="smoking"
-                  value={s}
-                  checked={smokingHabit === s}
-                  onChange={(e) => setSmokingHabit(e.target.value)}
-                />
-                <span>{s}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* 6. Alcohol Consumption */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Alcohol Consumption *
-          </label>
-          <div className="flex gap-4 text-sm text-gray-700">
-            {['None', 'Occasional', 'Regular'].map((a) => (
-              <label key={a} className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="alcohol"
-                  value={a}
-                  checked={alcoholConsumption === a}
-                  onChange={(e) => setAlcoholConsumption(e.target.value)}
-                />
-                <span>{a}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* 7. Physical Activity */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Physical Activity *
-          </label>
-          <select
-            value={physicalActivity}
-            onChange={(e) => setPhysicalActivity(e.target.value)}
-            className="w-full border border-gray-300 p-2 text-sm bg-white"
-            required
-          >
-            <option value="">-- Select Physical Activity Level --</option>
-            <option value="Sedentary">Sedentary (No exercise)</option>
-            <option value="Moderate">Moderate (3-4 days/week)</option>
-            <option value="Active">Active (Daily exercise)</option>
-          </select>
-        </div>
-
-        {/* 8. Family Medical History */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Family Medical History
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
-            {['Diabetes', 'High Blood Pressure', 'Heart Disease', 'High Cholesterol'].map((item) => (
-              <label key={item} className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={familyMedicalHistory.includes(item)}
-                  onChange={() => handleCheckboxChange(item)}
-                />
-                <span>{item}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* 9. Blood Sugar Level */}
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-1">
-            Blood Sugar Level <span className="text-gray-400 font-normal text-xs">(Optional)</span>
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. 95 mg/dL or Normal"
-            value={bloodSugarLevel}
-            onChange={(e) => setBloodSugarLevel(e.target.value)}
-            className="w-full border border-gray-300 p-2 text-sm"
-          />
-        </div>
-
-        {/* Submit & Reset Buttons */}
-        <div className="flex items-center gap-3 pt-2">
-          <button
-            type="submit"
-            id="btn-submit-form"
-            disabled={loading}
-            className={`font-bold px-6 py-2 border text-sm flex items-center gap-2 cursor-pointer ${
-              loading
-                ? 'bg-blue-300 border-blue-400 text-white cursor-not-allowed'
-                : 'bg-[#3b82f6] hover:bg-blue-600 text-white border-blue-700'
-            }`}
-          >
-            {loading ? (
-              <>
-                {/* Simple CSS Loading Spinner */}
-                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                <span>Calculating Risk...</span>
-              </>
-            ) : (
-              <span>Check Risk</span>
-            )}
-          </button>
-          
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={loading}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-4 py-2 border border-gray-300 cursor-pointer text-sm"
-          >
-            Reset
-          </button>
-        </div>
-      </form>
-
-      {/* Loading Indicator Box */}
-      {loading && (
-        <div className="border border-blue-200 bg-blue-50/80 p-3.5 rounded-lg text-xs text-blue-900 flex items-center gap-2.5">
-          <span className="inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0"></span>
-          <span className="font-medium">Calculating risk analysis from your health parameters...</span>
-        </div>
-      )}
-
-      {/* Result Card: Displayed right below Check Risk button when calculated */}
-      {result && !loading && (
-        <div className="border border-slate-200 rounded-xl p-5 sm:p-6 bg-white space-y-5 shadow-xs">
-          <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
-            <h3 className="font-bold text-base text-slate-900">
-              Live Health Risk Report
-            </h3>
-            <span className="text-xs px-2.5 py-1 font-semibold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Analysis Complete
-            </span>
-          </div>
-
-          {/* Top Row: 3 Separate Equal-Width Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            
-            {/* Box 1: RISK LEVEL */}
-            <div className={`border p-4 text-center flex flex-col justify-center items-center ${getRiskColorClasses(getDisplayLevel(result))}`}>
-              <div className="text-[11px] font-bold uppercase tracking-wider mb-1.5 opacity-90">
-                RISK LEVEL
-              </div>
-              <div className="text-xl font-extrabold tracking-tight">
-                {getDisplayLevel(result)}
-              </div>
+        {/* Header & Badges */}
+        <div className="space-y-3 pb-6 border-b border-slate-200/60">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50/90 text-blue-700 border border-blue-200/80 text-[11px] font-bold tracking-wide uppercase w-fit">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>✦ Health Risk Assessment</span>
             </div>
 
-            {/* Box 2: SUSPECTED CONDITION / TARGET DISEASE */}
-            <div className="border border-blue-300 bg-blue-50/70 p-4 text-center flex flex-col justify-center items-center text-blue-950">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-800 mb-1.5">
-                SUSPECTED CONDITION / TARGET DISEASE
+            <div className="flex items-center gap-2">
+              {/* Backend status indicator */}
+              <div
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border ${
+                  backendStatus === 'online'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : backendStatus === 'checking'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}
+                title={
+                  backendStatus === 'online'
+                    ? 'Render ML Prediction Service Online'
+                    : backendStatus === 'checking'
+                    ? 'Checking connection to ML Prediction Service'
+                    : 'Render ML Prediction Service Offline'
+                }
+              >
+                {backendStatus === 'online' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>ML Service Live</span>
+                  </>
+                ) : backendStatus === 'checking' ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    <span>ML Service Offline</span>
+                  </>
+                )}
               </div>
-              <div className="text-lg font-bold text-blue-900 leading-snug">
-                {getTargetDisease(result)}
-              </div>
-            </div>
 
-            {/* Box 3: CALCULATED RISK PROBABILITY */}
-            <div className="border border-indigo-300 bg-indigo-50/70 p-4 text-center flex flex-col justify-center items-center text-indigo-950">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-800 mb-1.5">
-                CALCULATED RISK PROBABILITY
-              </div>
-              <div className="text-xl font-extrabold text-indigo-900">
-                {getDisplayPercentage(result)}
-              </div>
+              <button
+                type="button"
+                onClick={handleLoadSample}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-600 bg-white/80 hover:bg-white border border-slate-200/80 hover:border-slate-300 shadow-2xs transition-all cursor-pointer w-fit"
+                title="Fill sample inputs for testing (does not trigger prediction)"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                <span>Fill Sample Inputs</span>
+              </button>
             </div>
-
           </div>
 
-          {/* Save to History / Account Integration Bar */}
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {isAuthenticated && user ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-                <div className="flex items-center gap-2">
-                  {isSaved ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-md">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      Saved to {user.name.split(' ')[0]}'s Health History
-                    </span>
-                  ) : (
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Let's understand your health
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              A 2-minute clinical ML assessment connecting to our Render machine learning engine.
+            </p>
+          </div>
+
+          {/* Progress Indicator */}
+          <div className="pt-3 space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+              <span className="uppercase tracking-wider text-blue-600">
+                Step {currentStep} of 4
+              </span>
+              <span className="text-slate-400 font-medium hidden sm:inline">
+                About You → Body → Lifestyle → Family History
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 3, 4].map((stepNum) => (
+                <div
+                  key={stepNum}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    stepNum <= currentStep
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600'
+                      : 'bg-slate-200/70'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Validation Notice Banner */}
+        {validationError && (
+          <div className="p-3.5 rounded-2xl border border-rose-200 bg-rose-50/90 text-rose-700 text-xs flex items-center gap-2.5 animate-in fade-in">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-medium">{validationError}</span>
+          </div>
+        )}
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="space-y-10">
+          {/* SECTION 1 — ABOUT YOU */}
+          <div className="space-y-4">
+            <div>
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
+                Section 01
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Let's start with you
+              </h2>
+              <p className="text-xs text-slate-500">
+                A few basic details help us personalize your assessment.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Name Field */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Your Name
+                </label>
+                <div className="relative">
+                  <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Alex Morgan"
+                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800 placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              {/* Age */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Age <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="e.g. 35"
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800 placeholder:text-slate-400"
+                  required
+                />
+              </div>
+
+              {/* Biological Sex */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Sex <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['Male', 'Female', 'Other'].map((s) => (
                     <button
+                      key={s}
                       type="button"
-                      id="btn-save-assessment"
-                      onClick={() => {
-                        const lvlStr = getDisplayLevel(result);
-                        const calculatedLevel: 'Low' | 'Moderate' | 'High' = lvlStr.toLowerCase().includes('high')
-                          ? 'High'
-                          : lvlStr.toLowerCase().includes('moderate') || lvlStr.toLowerCase().includes('medium')
-                          ? 'Moderate'
-                          : 'Low';
-
-                        const probNum = parseFloat(getDisplayPercentage(result).replace('%', '')) || 30;
-
-                        saveAssessment({
-                          disease: getTargetDisease(result),
-                          riskLevel: calculatedLevel,
-                          probability: probNum,
-                          bmi: parseFloat(bmi) || 24,
-                          bloodPressure,
-                          physicalActivity,
-                          smoking: smokingHabit,
-                          alcohol: alcoholConsumption,
-                          familyHistory: familyMedicalHistory.length > 0 ? familyMedicalHistory.join(', ') : 'None',
-                          recommendations: getRecommendations(result),
-                        });
-                        setIsSaved(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs cursor-pointer shadow-xs transition-colors"
+                      onClick={() => setGender(s)}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer text-center ${
+                        gender === s
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white/80 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
+                      }`}
                     >
-                      <Bookmark className="w-3.5 h-3.5" />
-                      <span>Save Report to My Profile History</span>
+                      {s}
                     </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 2 — BODY MEASUREMENTS */}
+          <div className="space-y-4 pt-4 border-t border-slate-200/60">
+            <div>
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
+                Section 02
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Your Body Measurements
+              </h2>
+              <p className="text-xs text-slate-500">
+                These numbers help us understand your current health baseline.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Height with unit */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Height <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative flex rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500 transition-all overflow-hidden">
+                  <div className="pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Ruler className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="60"
+                    max="260"
+                    value={heightCm}
+                    onChange={(e) => setHeightCm(e.target.value)}
+                    placeholder="Enter height"
+                    className="w-full pl-2.5 pr-2 py-2.5 text-sm bg-transparent focus:outline-hidden text-slate-800 placeholder:text-slate-400"
+                    required
+                  />
+                  <div className="bg-slate-100/80 px-3 flex items-center text-xs font-bold text-slate-600 border-l border-slate-200">
+                    cm
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1 block">e.g. 175 cm</span>
+              </div>
+
+              {/* Weight with unit */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Weight <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative flex rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500 transition-all overflow-hidden">
+                  <div className="pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="20"
+                    max="300"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(e.target.value)}
+                    placeholder="Enter weight"
+                    className="w-full pl-2.5 pr-2 py-2.5 text-sm bg-transparent focus:outline-hidden text-slate-800 placeholder:text-slate-400"
+                    required
+                  />
+                  <div className="bg-slate-100/80 px-3 flex items-center text-xs font-bold text-slate-600 border-l border-slate-200">
+                    kg
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1 block">e.g. 70 kg</span>
+              </div>
+            </div>
+
+            {/* Calculated BMI Glass Card & Visual Gauge */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-white/80 border border-slate-200/90 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Calculated Body Mass Index
+                  </span>
+                  <div className="flex items-baseline gap-2.5 mt-0.5">
+                    <span className="text-3xl font-black text-slate-900 tracking-tight">
+                      {bmi || '--'}
+                    </span>
+                    {bmiDetails ? (
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${bmiDetails.color}`}>
+                        ✓ {bmiDetails.category}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400 font-medium">
+                        Enter height & weight to calculate
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 max-w-xs sm:text-right">
+                  Calculated automatically from your height and weight.
+                </div>
+              </div>
+
+              {/* BMI Horizontal Visual Indicator */}
+              <div className="space-y-2 pt-1">
+                <div className="relative">
+                  <div className="h-2.5 rounded-full w-full bg-slate-200 overflow-hidden flex">
+                    <div className="h-full bg-sky-300 w-[15%]" title="Underweight (<18.5)" />
+                    <div className="h-full bg-emerald-400 w-[28%]" title="Healthy (18.5 - 24.9)" />
+                    <div className="h-full bg-amber-400 w-[22%]" title="Overweight (25 - 29.9)" />
+                    <div className="h-full bg-rose-400 w-[35%]" title="Obesity (≥30)" />
+                  </div>
+
+                  {bmiDetails && (
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 -ml-2.5 transition-all duration-300"
+                      style={{ left: `${bmiDetails.percentage}%` }}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-slate-900 border-2 border-white shadow-md flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={openProfileModal}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer"
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>View All Saved Reports</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
-                <div className="text-xs text-slate-600">
-                  <span className="font-bold text-slate-800">Track your health progress:</span> Sign in to securely save this prediction report and view previous assessments.
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openAuthModal('login')}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md text-xs cursor-pointer shadow-2xs flex items-center gap-1 transition-colors"
-                  >
-                    <LogIn className="w-3 h-3" />
-                    <span>Sign In</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAuthModal('register')}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md text-xs border border-slate-300 cursor-pointer transition-colors"
-                  >
-                    <span>Register</span>
-                  </button>
+                <div className="flex justify-between text-[10px] font-bold text-slate-500 pt-0.5">
+                  <div className="text-sky-700">Underweight (&lt;18.5)</div>
+                  <div className="text-emerald-700">Healthy (18.5–24.9)</div>
+                  <div className="text-amber-700">Overweight (25–29.9)</div>
+                  <div className="text-rose-700">Obesity (≥30)</div>
                 </div>
               </div>
-            )}
+
+              <div className="text-[11px] text-slate-400 leading-normal">
+                Note: BMI is a general screening measure, not a diagnosis.
+              </div>
+            </div>
           </div>
 
-          {/* Bottom Full-Width Rectangle Card: Recommendations array in clean bullet points */}
-          <div className="border border-gray-300 bg-gray-50 p-4 w-full">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-gray-700 mb-2.5 border-b border-gray-200 pb-1.5">
-              Recommendations & Guidance
+          {/* SECTION 3 — EVERYDAY HEALTH */}
+          <div className="space-y-4 pt-4 border-t border-slate-200/60">
+            <div>
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
+                Section 03
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Your Everyday Health
+              </h2>
+              <p className="text-xs text-slate-500">
+                Tell us about a few habits and measurements.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Blood Pressure */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Your blood pressure <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={bloodPressure}
+                  onChange={(e) => setBloodPressure(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800"
+                  required
+                >
+                  <option value="">-- Select blood pressure category --</option>
+                  <option value="Normal (<120/80 mmHg)">Normal (Under 120 / 80 mmHg)</option>
+                  <option value="Elevated (120-129/<80 mmHg)">Elevated (120-129 / Under 80 mmHg)</option>
+                  <option value="Stage 1 Hypertension (130-139/80-89 mmHg)">Stage 1 (130-139 / 80-89 mmHg)</option>
+                  <option value="Stage 2 Hypertension (≥140/≥90 mmHg)">Stage 2 (140+ / 90+ mmHg)</option>
+                </select>
+              </div>
+
+              {/* Physical Activity */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  How active are you? <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={physicalActivity}
+                  onChange={(e) => setPhysicalActivity(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800"
+                  required
+                >
+                  <option value="">-- Select activity level --</option>
+                  <option value="Active">Active (Daily exercise / sport)</option>
+                  <option value="Moderate">Moderate (3–4 days of movement/week)</option>
+                  <option value="Sedentary">Sedentary (Little to no regular exercise)</option>
+                </select>
+              </div>
+
+              {/* Smoking */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Do you smoke? <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={smokingHabit}
+                  onChange={(e) => setSmokingHabit(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800"
+                  required
+                >
+                  <option value="">-- Select smoking status --</option>
+                  <option value="Never Smoker">Never Smoker (Smoke-free)</option>
+                  <option value="Former Smoker">Former Smoker (Quit)</option>
+                  <option value="Occasional">Occasional Smoker</option>
+                  <option value="Regular Smoker">Regular Smoker (Daily)</option>
+                </select>
+              </div>
+
+              {/* Alcohol */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  How often do you drink alcohol? <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={alcoholConsumption}
+                  onChange={(e) => setAlcoholConsumption(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800"
+                  required
+                >
+                  <option value="">-- Select alcohol intake --</option>
+                  <option value="None">None / Rarely</option>
+                  <option value="Moderate">Moderate (1–2 drinks/week)</option>
+                  <option value="Regular">Regular / Frequent</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 4 — FAMILY HEALTH HISTORY */}
+          <div className="space-y-4 pt-4 border-t border-slate-200/60">
+            <div>
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
+                Section 04
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Health conditions in your family
+              </h2>
+              <p className="text-xs text-slate-500">
+                Some health conditions can run in families. Select all that apply.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+              {familyConditionsList.map((item) => {
+                const isSelected = familyMedicalHistory.includes(item);
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => handleToggleFamilyCondition(item)}
+                    className={`p-3 rounded-2xl text-xs font-semibold border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white/80 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <span>{item}</span>
+                    {isSelected ? (
+                      <Check className="w-4 h-4 text-white shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Blood Sugar Optional */}
+            <div className="pt-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Blood sugar (optional)
+              </label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                If you know your recent blood sugar reading, you can add it here.
+              </p>
+              <input
+                type="text"
+                placeholder="e.g. 95 mg/dL or Normal"
+                value={bloodSugarLevel}
+                onChange={(e) => setBloodSugarLevel(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-white/90 hover:bg-white focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-slate-800 placeholder:text-slate-400"
+              />
+            </div>
+          </div>
+
+          {/* Form CTA & Controls */}
+          <div className="pt-4 border-t border-slate-200/60 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <button
+                  type="submit"
+                  id="btn-submit-assessment"
+                  disabled={buttonState === 'processing' || backendStatus === 'offline'}
+                  className={`w-full sm:w-auto font-bold px-8 py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2.5 shadow-md transition-all cursor-pointer ${
+                    buttonState === 'processing'
+                      ? 'bg-blue-400 text-white cursor-not-allowed'
+                      : backendStatus === 'offline'
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300'
+                      : buttonState === 'success'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/25'
+                      : buttonState === 'error'
+                      ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 hover:shadow-lg active:scale-98'
+                  }`}
+                >
+                  {buttonState === 'processing' ? (
+                    <>
+                      <Activity className="w-4 h-4 text-white animate-spin" />
+                      <span>Analyzing your health...</span>
+                    </>
+                  ) : buttonState === 'checking' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                      <span>Checking prediction service...</span>
+                    </>
+                  ) : buttonState === 'success' ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>Assessment Complete ✓</span>
+                    </>
+                  ) : buttonState === 'error' ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 text-white" />
+                      <span>Try Again</span>
+                    </>
+                  ) : backendStatus === 'offline' ? (
+                    <>
+                      <WifiOff className="w-4 h-4 text-slate-500" />
+                      <span>Prediction service unavailable</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Check My Health Risk →</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="text-[11px] text-slate-500 font-medium pl-1 text-center sm:text-left">
+                  {backendStatus === 'offline' ? (
+                    <span className="text-rose-600 font-semibold">
+                      Prediction service unavailable. Click below to reconnect.
+                    </span>
+                  ) : (
+                    'Takes about 2 minutes • Non-invasive'
+                  )}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-center sm:self-auto">
+                {backendStatus === 'offline' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      checkBackendHealth();
+                      setBackendError(false);
+                      setButtonState('ready');
+                    }}
+                    className="px-4 py-2.5 rounded-2xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Check Connection</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={buttonState === 'processing'}
+                  className="px-5 py-3 rounded-2xl border border-slate-200 bg-white/80 hover:bg-white text-slate-600 font-semibold text-xs transition-colors cursor-pointer text-center"
+                >
+                  Reset Form
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* BACKEND UNAVAILABLE ERROR STATE CARD (When Render is offline or unreachable) */}
+      {backendError && (
+        <div
+          id="backend-unavailable-card"
+          className="glass-panel rounded-3xl p-6 sm:p-8 space-y-4 border border-rose-200/90 bg-rose-50/40 shadow-xl text-center animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+
+          <div className="space-y-1.5 max-w-md mx-auto">
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+              Health Check Temporarily Unavailable
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Your assessment couldn't be processed because the prediction service is currently unavailable.
+            </p>
+            <p className="text-xs text-slate-400">
+              Please try again when the prediction service is back online.
+            </p>
+          </div>
+
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setBackendError(false);
+                setButtonState('ready');
+                checkBackendHealth();
+              }}
+              className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Try Again</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ASSESSMENT RESULT CARD (Rendered ONLY after successful Render backend response) */}
+      {result && buttonState !== 'processing' && !backendError && (
+        <div
+          id="assessment-result-card"
+          className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6 border border-white/90 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300 relative overflow-hidden"
+        >
+          {/* Subtle Ambient Backing Glow */}
+          <div className="absolute top-0 right-0 w-80 h-32 bg-blue-500/10 blur-2xl rounded-full pointer-events-none -z-10" />
+
+          {/* Report Header */}
+          <div className="border-b border-slate-200/60 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full mb-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Verified ML Assessment Completed</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                Your Health Risk Summary
+              </h3>
+              {fullName && (
+                <p className="text-xs text-slate-500">
+                  Personal assessment prepared for <strong className="text-slate-800">{fullName}</strong>
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white/80 hover:bg-white text-slate-600 text-xs font-semibold cursor-pointer shadow-2xs"
+              >
+                New Assessment
+              </button>
+            </div>
+          </div>
+
+          {/* 3 Metric Summary Boxes */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* Box 1: OVERALL RISK LEVEL */}
+            <div
+              className={`p-5 rounded-2xl text-center flex flex-col justify-center items-center border ${
+                result.risk_level.toLowerCase().includes('high')
+                  ? 'border-rose-200 bg-rose-50/90 text-rose-950'
+                  : result.risk_level.toLowerCase().includes('moderate') || result.risk_level.toLowerCase().includes('medium')
+                  ? 'border-amber-200 bg-amber-50/90 text-amber-950'
+                  : 'border-emerald-200 bg-emerald-50/90 text-emerald-950'
+              }`}
+            >
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-80">
+                Overall Risk Level
+              </div>
+              <div className="text-2xl sm:text-3xl font-black tracking-tight">
+                {result.risk_level}
+              </div>
+            </div>
+
+            {/* Box 2: PRIMARY AREA CHECKED */}
+            <div className="p-5 rounded-2xl text-center flex flex-col justify-center items-center bg-blue-50/90 border border-blue-200 text-blue-950">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 mb-1">
+                Primary Focus Area
+              </div>
+              <div className="text-sm sm:text-base font-bold text-blue-900 leading-snug whitespace-pre-line">
+                {result.target_disease}
+              </div>
+            </div>
+
+            {/* Box 3: HEALTH INDEX */}
+            <div className="p-5 rounded-2xl text-center flex flex-col justify-center items-center bg-indigo-50/90 border border-indigo-200 text-indigo-950">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 mb-1">
+                Health Index
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-indigo-900">
+                {result.health_index}
+                <span className="text-xs font-normal text-indigo-600"> / 100</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Calculated Risk: {result.risk_percentage}
+              </div>
+            </div>
+          </div>
+
+          {/* Automatic Saving Confirmation Bar */}
+          {isAuthenticated && user ? (
+            <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-950">
+              <div className="flex items-center gap-2 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Your assessment has been saved to My Health ✓</span>
+              </div>
+              {onNavigateToHealth && (
+                <button
+                  type="button"
+                  onClick={onNavigateToHealth}
+                  className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer shrink-0"
+                >
+                  View in My Health &rarr;
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-blue-50/90 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-950">
+              <div>
+                <span className="font-bold">Sign in to save your assessment history.</span>{' '}
+                Track your vitals over time and see historical improvement.
+              </div>
+              <button
+                type="button"
+                onClick={() => openAuthModal('login')}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shrink-0 transition-colors shadow-2xs"
+              >
+                Sign In to Save History &rarr;
+              </button>
+            </div>
+          )}
+
+          {/* Recommended Next Steps from ML model */}
+          <div className="p-5 rounded-2xl bg-white/80 border border-slate-200/80 space-y-3">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>Recommended Next Steps from ML Engine</span>
             </h4>
-            <ul className="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-gray-800">
-              {getRecommendations(result).map((rec, idx) => (
+            <ul className="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-slate-700">
+              {result.recommendations.map((rec, idx) => (
                 <li key={idx} className="leading-relaxed pl-1">
                   {rec}
                 </li>
               ))}
             </ul>
-          </div>
-
-          {/* Input Summary */}
-          <div className="text-[11px] text-gray-500 border-t border-gray-200 pt-2 flex flex-wrap gap-x-4 gap-y-1">
-            <span>Age: <strong>{age}</strong></span>
-            <span>Gender: <strong>{gender}</strong></span>
-            <span>BMI: <strong>{bmi}</strong></span>
-            <span>BP: <strong>{bloodPressure}</strong></span>
-            <span>Smoking: <strong>{smokingHabit}</strong></span>
-            <span>Activity: <strong>{physicalActivity}</strong></span>
           </div>
         </div>
       )}

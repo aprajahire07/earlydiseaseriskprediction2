@@ -4,7 +4,7 @@ import { Navbar } from './components/Navbar';
 import { HomeSection } from './components/HomeSection';
 import { AboutSection } from './components/AboutSection';
 import { PredictionForm } from './components/PredictionForm';
-import { AuthPage } from './components/AuthPage';
+import { MyHealthDashboard } from './components/MyHealthDashboard';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { HeartPulse } from 'lucide-react';
@@ -46,21 +46,23 @@ function MainContent() {
           <HomeSection
             onCheckRisk={() => scrollToAnchor('form')}
             onLearnMore={() => scrollToAnchor('about')}
-            onNavigateToAuth={() => scrollToAnchor('auth')}
+            onNavigateToAuth={() => scrollToAnchor('health')}
           />
         )}
 
         {activeTab === 'about' && <AboutSection />}
 
-        {activeTab === 'form' && <PredictionForm />}
+        {activeTab === 'form' && (
+          <PredictionForm onNavigateToHealth={() => scrollToAnchor('health')} />
+        )}
 
-        {activeTab === 'auth' && (
-          <AuthPage onNavigateToForm={() => scrollToAnchor('form')} />
+        {(activeTab === 'health' || activeTab === 'auth') && (
+          <MyHealthDashboard onNavigateToForm={() => scrollToAnchor('form')} />
         )}
       </main>
 
       {/* Auth Modal (Login / Register / Demo) */}
-      <AuthModal onOpenFullPortal={() => scrollToAnchor('auth')} />
+      <AuthModal onOpenFullPortal={() => scrollToAnchor('health')} />
 
       {/* User Profile & Assessment History Modal */}
       <UserProfileModal onNavigateToForm={() => scrollToAnchor('form')} />
@@ -98,6 +100,13 @@ function MainContent() {
                 className="hover:text-blue-600 transition-colors cursor-pointer"
               >
                 Assessment
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToAnchor('health')}
+                className="hover:text-blue-600 transition-colors cursor-pointer font-bold text-blue-600"
+              >
+                My Health
               </button>
               <button
                 type="button"

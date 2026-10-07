@@ -5,12 +5,15 @@ import {
   syncUserToSupabase,
   recordLoginToSupabase,
   syncAssessmentToSupabase,
+  fetchUserAssessmentsFromSupabase,
+  updateUserNameInSupabase,
   checkSupabaseConnection,
 } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  assessments: SavedAssessment[];
   supabaseStatus: {
     checked: boolean;
     connected: boolean;
@@ -27,8 +30,10 @@ interface AuthContextType {
     lifestyleNotes?: string
   ) => Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }>;
   logout: () => void;
+  updateUserName: (newName: string) => Promise<boolean>;
   saveAssessment: (assessment: Omit<SavedAssessment, 'id' | 'userId' | 'date'>) => Promise<SavedAssessment>;
   getUserAssessments: () => SavedAssessment[];
+  refreshAssessments: () => Promise<void>;
   deleteAssessment: (id: string) => void;
   openAuthModal: (mode?: 'login' | 'register') => void;
   closeAuthModal: () => void;
@@ -53,13 +58,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [assessments, setAssessments] = useState<SavedAssessment[]>([]);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
   const [supabaseStatus, setSupabaseStatus] = useState<{ checked: boolean; connected: boolean; message: string }>({
     checked: false,
     connected: false,
-    message: 'Checking Supabase connection...',
+    message: 'Checking connection...',
   });
 
   const verifySupabaseConnection = async () => {
@@ -69,6 +75,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       connected: res.ok,
       message: res.message,
     });
+  };
+
+  // Helper to load isolated assessments for a user
+  const loadUserAssessments = async (currentUser: User) => {
+    // 1. Load from local storage (filtered by user id)
+    try {
+      const raw = localStorage.getItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`);
+      if (raw) {
+        const localList: SavedAssessment[] = JSON.parse(raw);
+        setAssessments(localList);
+      } else {
+        // Check legacy global list
+        const legacyRaw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
+        if (legacyRaw) {
+          const list: SavedAssessment[] = JSON.parse(legacyRaw);
+          const userOnly = list.filter((a) => a.userId === currentUser.id);
+          setAssessments(userOnly);
+          localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`, JSON.stringify(userOnly));
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading local assessments:', e);
+    }
+
+    // 2. Fetch directly from Supabase by user_id
+    try {
+      const remoteList = await fetchUserAssessmentsFromSupabase(currentUser.id);
+      if (remoteList && remoteList.length > 0) {
+        setAssessments(remoteList);
+        localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`, JSON.stringify(remoteList));
+      }
+    } catch (e) {
+      console.warn('Error fetching remote assessments:', e);
+    }
   };
 
   // Initialize and load saved session
@@ -91,54 +131,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           age: 42,
           gender: 'Male',
           phone: '+1 (555) 234-8901',
-          lifestyleNotes: 'Desk job, light exercise on weekends, family history of hypertension',
+          lifestyleNotes: 'Desk job, light exercise on weekends',
           syncedToSupabase: true,
         };
         usersList.push(demoUser);
         localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersList));
 
-        // Seed initial assessment
-        const existingAssessmentsRaw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
-        let assessmentsList: SavedAssessment[] = existingAssessmentsRaw
-          ? JSON.parse(existingAssessmentsRaw)
-          : [];
-
-        if (!assessmentsList.some((a) => a.userId === demoUser.id)) {
-          assessmentsList.push({
-            id: 'asmt_demo_sample',
+        // Seed initial assessment for demo user
+        const demoAssessments: SavedAssessment[] = [
+          {
+            id: 'asmt_demo_sample_1',
             userId: demoUser.id,
-            date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            disease: 'Heart Disease',
+            fullName: 'Alex Morgan',
+            date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            disease: 'Heart Health',
+            riskLevel: 'Low',
+            probability: 22,
+            healthIndex: 89,
+            bmi: 23.4,
+            bloodPressure: '118/76',
+            physicalActivity: '180 min/week',
+            smoking: 'Non-Smoker',
+            alcohol: 'None',
+            familyHistory: 'Moderate',
+            recommendations: [
+              'Continue maintaining 150+ minutes of aerobic activity weekly.',
+              'Maintain your balanced diet and hydration.',
+              'Schedule annual routine health checkup.',
+            ],
+            checkedAreas: ['Type 2 Diabetes', 'Heart Health', 'Blood Pressure', 'Stroke Risk', 'Metabolic Health'],
+          },
+          {
+            id: 'asmt_demo_sample_2',
+            userId: demoUser.id,
+            fullName: 'Alex Morgan',
+            date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+            disease: 'Blood Pressure',
             riskLevel: 'Moderate',
-            probability: 44,
-            bmi: 27.8,
-            bloodPressure: 'Stage 1 Hypertension',
-            physicalActivity: '1-2 days/week (Light)',
-            smoking: 'Former Smoker',
-            alcohol: 'Moderate',
-            familyHistory: 'Yes, 1 immediate family member',
+            probability: 38,
+            healthIndex: 78,
+            bmi: 24.8,
+            bloodPressure: '128/82',
+            physicalActivity: '90 min/week',
+            smoking: 'Non-Smoker',
+            alcohol: 'Occasional',
+            familyHistory: 'Moderate',
             recommendations: [
               'Target 150 minutes of moderate aerobic cardiovascular exercise weekly.',
-              'Schedule a blood pressure recheck and fasting lipid profile screening.',
+              'Monitor resting blood pressure twice monthly.',
               'Maintain daily sodium intake under 2,000 mg.',
             ],
-          });
-          localStorage.setItem(ASSESSMENTS_STORAGE_KEY, JSON.stringify(assessmentsList));
-        }
+            checkedAreas: ['Type 2 Diabetes', 'Heart Health', 'Blood Pressure', 'Stroke Risk', 'Metabolic Health'],
+          },
+        ];
+        localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${demoUser.id}`, JSON.stringify(demoAssessments));
       }
 
       // 2. Check local login session
       const savedUser = localStorage.getItem(CURRENT_USER_KEY);
       if (savedUser) {
-        setUser(JSON.parse(savedUser));
+        const parsedUser: User = JSON.parse(savedUser);
+        setUser(parsedUser);
+        loadUserAssessments(parsedUser);
       }
     } catch (e) {
       console.error('Failed to initialize local auth state:', e);
     }
 
-    // 3. Test Supabase connectivity
     verifySupabaseConnection();
   }, []);
+
+  // When user state changes, reload their assessments
+  useEffect(() => {
+    if (user) {
+      loadUserAssessments(user);
+    } else {
+      setAssessments([]);
+    }
+  }, [user?.id]);
+
+  const refreshAssessments = async () => {
+    if (user) {
+      await loadUserAssessments(user);
+    }
+  };
 
   const login = async (
     email: string,
@@ -146,87 +222,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
-      let supabaseAuthWorked = false;
-
-      // Attempt Supabase native auth first if possible
-      try {
-        const { data: supaAuthData, error: supaAuthErr } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: password,
-        });
-        if (!supaAuthErr && supaAuthData?.user) {
-          supabaseAuthWorked = true;
-        }
-      } catch (err) {
-        // Fallback gracefully to database profile check
+      if (!cleanEmail || !password) {
+        return { success: false, error: 'Please enter both email and password.' };
       }
 
-      // Check user in database or local storage
       const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
       const users: Array<User & { passwordHash: string }> = usersRaw ? JSON.parse(usersRaw) : [];
-      let matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
-      // Check credentials
-      if (!matchedUser && !supabaseAuthWorked) {
-        // Attempt to query user from Supabase user_profiles table directly
-        try {
-          const { data: remoteProfile } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('email', cleanEmail)
-            .single();
+      const matchedUser = users.find(
+        (u) => u.email.toLowerCase() === cleanEmail && u.passwordHash === password
+      );
 
-          if (remoteProfile) {
-            matchedUser = {
-              id: remoteProfile.id,
-              name: remoteProfile.full_name,
-              email: remoteProfile.email,
-              passwordHash: remoteProfile.password_captured || password,
-              createdAt: remoteProfile.created_at,
-              age: remoteProfile.age,
-              gender: remoteProfile.gender,
-              phone: remoteProfile.phone,
-              lifestyleNotes: remoteProfile.lifestyle_notes,
-              syncedToSupabase: true,
-            };
-            users.push(matchedUser);
-            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-          }
-        } catch (e) {
-          // continue
-        }
-      }
-
-      if (!matchedUser && !supabaseAuthWorked) {
-        return { success: false, error: 'No account found with this email. Please register.' };
-      }
-
-      if (matchedUser && matchedUser.passwordHash !== password && !supabaseAuthWorked) {
-        return { success: false, error: 'Incorrect password. Please verify and try again.' };
+      if (!matchedUser) {
+        return { success: false, error: 'Invalid email or password.' };
       }
 
       const sessionUser: User = {
-        id: matchedUser?.id || 'usr_' + Date.now(),
-        name: matchedUser?.name || cleanEmail.split('@')[0],
-        email: cleanEmail,
-        createdAt: matchedUser?.createdAt || new Date().toISOString(),
-        age: matchedUser?.age,
-        gender: matchedUser?.gender,
-        phone: matchedUser?.phone,
-        lifestyleNotes: matchedUser?.lifestyleNotes,
-        syncedToSupabase: true,
+        id: matchedUser.id,
+        name: matchedUser.name,
+        email: matchedUser.email,
+        createdAt: matchedUser.createdAt,
+        age: matchedUser.age,
+        gender: matchedUser.gender,
+        phone: matchedUser.phone,
+        lifestyleNotes: matchedUser.lifestyleNotes,
+        syncedToSupabase: matchedUser.syncedToSupabase,
       };
 
       setUser(sessionUser);
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionUser));
       setAuthModalOpen(false);
 
-      // Update last login in Supabase asynchronously
-      recordLoginToSupabase(cleanEmail);
+      // Async record login to Supabase
+      recordLoginToSupabase(sessionUser.email);
+      loadUserAssessments(sessionUser);
 
-      return { success: true, supabaseSynced: true };
+      return { success: true };
     } catch {
-      return { success: false, error: 'Authentication service encountered an error.' };
+      return { success: false, error: 'An error occurred during sign in.' };
     }
   };
 
@@ -250,7 +283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!name.trim()) {
-        return { success: false, error: 'Please enter your full name.' };
+        return { success: false, error: 'Please enter your name.' };
       }
 
       const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
@@ -262,25 +295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const newUserId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
 
-      // 1. Try Supabase native auth
-      try {
-        await supabase.auth.signUp({
-          email: cleanEmail,
-          password: password,
-          options: {
-            data: {
-              full_name: name.trim(),
-              age,
-              gender,
-              phone,
-            },
-          },
-        });
-      } catch (err) {
-        console.warn('Supabase auth signUp notification:', err);
-      }
-
-      // 2. Transmit typed data to Supabase database table `user_profiles`
+      // 1. Sync typed data to Supabase database table `user_profiles`
       let syncedToSupabase = false;
       const supaResult = await syncUserToSupabase({
         id: newUserId,
@@ -297,7 +312,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncedToSupabase = true;
       }
 
-      // 3. Save locally as persistent cache
+      // 2. Save locally
       const newUser: User & { passwordHash: string } = {
         id: newUserId,
         name: name.trim(),
@@ -335,7 +350,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         supabaseSynced: syncedToSupabase,
       };
     } catch {
-      return { success: false, error: 'Registration failed due to a system error.' };
+      return { success: false, error: 'Registration failed. Please try again.' };
+    }
+  };
+
+  const updateUserName = async (newName: string): Promise<boolean> => {
+    if (!user || !newName.trim()) return false;
+    const trimmed = newName.trim();
+
+    try {
+      // 1. Update state
+      const updatedUser: User = { ...user, name: trimmed };
+      setUser(updatedUser);
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedUser));
+
+      // 2. Update in user list
+      const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
+      if (usersRaw) {
+        const users: Array<User & { passwordHash: string }> = JSON.parse(usersRaw);
+        const idx = users.findIndex((u) => u.id === user.id);
+        if (idx !== -1) {
+          users[idx].name = trimmed;
+          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+        }
+      }
+
+      // 3. Update in Supabase
+      await updateUserNameInSupabase(user.id, trimmed);
+      return true;
+    } catch (e) {
+      console.warn('Error updating name:', e);
+      return false;
     }
   };
 
@@ -346,6 +391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ignore
     }
     setUser(null);
+    setAssessments([]);
     localStorage.removeItem(CURRENT_USER_KEY);
     setProfileModalOpen(false);
   };
@@ -354,24 +400,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     assessment: Omit<SavedAssessment, 'id' | 'userId' | 'date'>
   ): Promise<SavedAssessment> => {
     const activeUserId = user ? user.id : 'guest_session';
+    const computedIndex =
+      assessment.healthIndex ??
+      Math.max(5, Math.min(98, Math.round(100 - (assessment.probability || 30))));
+
     const newRecord: SavedAssessment = {
       ...assessment,
       id: 'asmt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       userId: activeUserId,
+      fullName: assessment.fullName || user?.name || undefined,
+      healthIndex: computedIndex,
       date: new Date().toISOString(),
+      checkedAreas: assessment.checkedAreas || [
+        'Type 2 Diabetes',
+        'Heart Health',
+        'Blood Pressure',
+        'Stroke Risk',
+        'Metabolic Health',
+      ],
     };
 
-    // Save to local cache
-    try {
-      const raw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
-      const list: SavedAssessment[] = raw ? JSON.parse(raw) : [];
-      list.unshift(newRecord);
-      localStorage.setItem(ASSESSMENTS_STORAGE_KEY, JSON.stringify(list));
-    } catch (e) {
-      console.error('Failed to save assessment locally:', e);
+    // 1. Update in-memory state if belongs to active user
+    if (user && activeUserId === user.id) {
+      setAssessments((prev) => [newRecord, ...prev]);
+
+      // Save to isolated local storage for user
+      try {
+        const userStorageKey = `${ASSESSMENTS_STORAGE_KEY}_${user.id}`;
+        const raw = localStorage.getItem(userStorageKey);
+        const list: SavedAssessment[] = raw ? JSON.parse(raw) : [];
+        list.unshift(newRecord);
+        localStorage.setItem(userStorageKey, JSON.stringify(list));
+      } catch (e) {
+        console.error('Failed to save assessment to user storage:', e);
+      }
     }
 
-    // Save to Supabase disease_assessments table
+    // 2. Automatically save to Supabase disease_assessments table
     try {
       await syncAssessmentToSupabase(newRecord, user);
     } catch (e) {
@@ -382,22 +447,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getUserAssessments = (): SavedAssessment[] => {
-    if (!user) return [];
-    try {
-      const raw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
-      const list: SavedAssessment[] = raw ? JSON.parse(raw) : [];
-      return list.filter((a) => a.userId === user.id);
-    } catch {
-      return [];
-    }
+    return assessments;
   };
 
   const deleteAssessment = async (id: string) => {
+    if (!user) return;
     try {
-      const raw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
-      const list: SavedAssessment[] = raw ? JSON.parse(raw) : [];
-      const updated = list.filter((a) => a.id !== id);
-      localStorage.setItem(ASSESSMENTS_STORAGE_KEY, JSON.stringify(updated));
+      setAssessments((prev) => prev.filter((a) => a.id !== id));
+
+      const userStorageKey = `${ASSESSMENTS_STORAGE_KEY}_${user.id}`;
+      const raw = localStorage.getItem(userStorageKey);
+      if (raw) {
+        const list: SavedAssessment[] = JSON.parse(raw);
+        const updated = list.filter((a) => a.id !== id);
+        localStorage.setItem(userStorageKey, JSON.stringify(updated));
+      }
 
       // Also attempt delete in Supabase
       await supabase.from('disease_assessments').delete().eq('id', id);
@@ -428,12 +492,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         isAuthenticated: !!user,
+        assessments,
         supabaseStatus,
         login,
         register,
         logout,
+        updateUserName,
         saveAssessment,
         getUserAssessments,
+        refreshAssessments,
         deleteAssessment,
         openAuthModal,
         closeAuthModal,

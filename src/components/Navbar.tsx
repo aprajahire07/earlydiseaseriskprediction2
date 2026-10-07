@@ -6,7 +6,7 @@ import {
   User as UserIcon,
   LogIn,
   History,
-  Database,
+  Activity,
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
@@ -126,21 +126,21 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           </button>
         </nav>
 
-        {/* Desktop Right Actions: Patient Portal & Sign In */}
+        {/* Desktop Right Actions: My Health & Sign In */}
         <div className="hidden sm:flex items-center gap-2 text-xs">
-          {/* Patient Portal Button */}
+          {/* My Health Dashboard Button */}
           <button
             type="button"
-            id="btn-nav-patient-portal"
-            onClick={() => handleNavClick('auth')}
-            className={`px-3 py-1.5 rounded-full font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
-              activeTab === 'auth'
-                ? 'bg-blue-50 text-blue-700 border-blue-200'
+            id="btn-nav-my-health"
+            onClick={() => handleNavClick('health')}
+            className={`px-3.5 py-1.5 rounded-full font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              activeTab === 'health' || activeTab === 'auth'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-white/80 text-slate-700 border-slate-200/80 hover:bg-white hover:border-slate-300'
             }`}
           >
-            <Database className="w-3.5 h-3.5 text-blue-600" />
-            <span>Patient Portal</span>
+            <Activity className={`w-3.5 h-3.5 ${activeTab === 'health' || activeTab === 'auth' ? 'text-white' : 'text-blue-600'}`} />
+            <span>My Health</span>
           </button>
 
           {/* User Auth Status */}
@@ -243,11 +243,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           <div className="pt-2 border-t border-slate-200/80 flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => handleNavClick('auth')}
-              className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 text-sm flex items-center justify-center gap-2 cursor-pointer"
+              onClick={() => handleNavClick('health')}
+              className={`w-full p-2.5 rounded-xl border font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                activeTab === 'health' || activeTab === 'auth'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white border-slate-200 text-slate-800'
+              }`}
             >
-              <Database className="w-4 h-4 text-blue-600" />
-              <span>Patient Portal</span>
+              <Activity className={`w-4 h-4 ${activeTab === 'health' || activeTab === 'auth' ? 'text-white' : 'text-blue-600'}`} />
+              <span>My Health Dashboard</span>
             </button>
 
             {isAuthenticated && user ? (
