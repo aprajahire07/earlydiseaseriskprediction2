@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SavedAssessment } from '../types';
+import { normalizeRenderPredictions } from '../utils/predictionNormalization';
 import {
   HeartPulse,
   Activity,
@@ -293,6 +294,80 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
             </div>
           </div>
 
+          {/* Disease Risk Results for this Historical Assessment */}
+          {(() => {
+            const predictions =
+              (selectedAssessment.predictions && selectedAssessment.predictions.length > 0 && selectedAssessment.predictions) ||
+              normalizeRenderPredictions({
+                target_disease: selectedAssessment.disease,
+                probability: selectedAssessment.probability,
+                condition_results: selectedAssessment.condition_results,
+              });
+
+            if (!predictions || predictions.length === 0) return null;
+
+            return (
+              <div className="space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Activity className="w-4 h-4 text-blue-600" />
+                    <span>Your Disease Risk Results ({predictions.length} Conditions Evaluated)</span>
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 self-start sm:self-auto">
+                    Prediction source: Render ML model
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {predictions.map((p, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-2xl bg-white/80 border border-slate-200/80 shadow-2xs space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                            {p.disease}
+                          </div>
+                          <div className="text-[10px] text-slate-400">Powered by your ML assessment</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-base sm:text-lg font-black text-slate-900">
+                            {p.percentageFormatted}
+                          </div>
+                          <span
+                            className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                              p.riskCategory === 'High'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : p.riskCategory === 'Moderate'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {p.riskCategory} Risk
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            p.riskCategory === 'High'
+                              ? 'bg-rose-500'
+                              : p.riskCategory === 'Moderate'
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(4, p.percentage))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Areas We Checked */}
           <div className="space-y-3 pt-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -578,6 +653,31 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
                         <span className="font-bold text-slate-800">{item.physicalActivity.split('(')[0]}</span>
                       </div>
                     </div>
+
+                    {/* Multi-Condition Prediction Preview Chips */}
+                    {(() => {
+                      const preds =
+                        (item.predictions && item.predictions.length > 0 && item.predictions) ||
+                        normalizeRenderPredictions({
+                          target_disease: item.disease,
+                          probability: item.probability,
+                          condition_results: item.condition_results,
+                        });
+                      if (!preds || preds.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ML Predictions:</span>
+                          {preds.map((p, pIdx) => (
+                            <span
+                              key={pIdx}
+                              className="px-2 py-0.5 rounded-lg bg-blue-50/90 border border-blue-200/80 text-[11px] font-semibold text-blue-900"
+                            >
+                              {p.disease}: <strong className="text-blue-700">{p.percentageFormatted}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <button

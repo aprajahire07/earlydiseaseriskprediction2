@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { DiseasePredictionItem } from '../types';
+import { normalizeRenderPredictions } from '../utils/predictionNormalization';
 import {
   HeartPulse,
   Activity,
@@ -46,6 +48,9 @@ interface DisplayPrediction {
   target_disease: string;
   recommendations: string[];
   health_index: number;
+  predictions: DiseasePredictionItem[];
+  condition_results: Record<string, number>;
+  rawResponse?: any;
 }
 
 // Interactive chat message structure
@@ -119,6 +124,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
   // Result state — ONLY populated from a successful Render API response
   const [result, setResult] = useState<DisplayPrediction | null>(null);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [showDebugDetails, setShowDebugDetails] = useState<boolean>(false);
 
   // Unique assessment ID generated upon each successful Render ML response
   const [assessmentId, setAssessmentId] = useState<string>('');
@@ -552,12 +558,28 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
       const percentNum = parseFloat(String(rawRiskPercentage).replace('%', '')) || 25;
       const healthIdx = Math.max(5, Math.min(98, Math.round(100 - percentNum)));
 
+      // Parse all disease predictions directly returned by Render ML model
+      const normalizedPredictions = normalizeRenderPredictions(data);
+
+      if (!normalizedPredictions || normalizedPredictions.length === 0) {
+        throw new Error('Prediction data was not returned by the ML server.');
+      }
+
+      // Build condition_results map for storage and historical retrieval
+      const conditionResultsMap: Record<string, number> = {};
+      for (const p of normalizedPredictions) {
+        conditionResultsMap[p.disease] = p.percentage;
+      }
+
       const displayResult: DisplayPrediction = {
         risk_percentage: String(rawRiskPercentage).includes('%') ? String(rawRiskPercentage) : `${rawRiskPercentage}%`,
         risk_level: String(rawRiskLevel),
         target_disease: String(rawTargetDisease),
         recommendations: formattedRecs,
         health_index: healthIdx,
+        predictions: normalizedPredictions,
+        condition_results: conditionResultsMap,
+        rawResponse: data,
       };
 
       // 6. SUCCESS: Render backend provided valid prediction
@@ -621,14 +643,11 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
             familyHistory: familyStr,
             bloodSugarLevel: bloodSugarLevel || 'Normal',
             recommendations: formattedRecs,
-            checkedAreas: [
-              'Type 2 Diabetes',
-              'Heart Health',
-              'Blood Pressure',
-              'Stroke Risk',
-              'Metabolic Health',
-            ],
+            checkedAreas: normalizedPredictions.map((p) => p.disease),
             isSample: isSampleDataLoaded,
+            predictions: normalizedPredictions,
+            condition_results: conditionResultsMap,
+            rawRenderResponse: data,
           });
           setIsSaved(true);
         } catch (saveErr) {
@@ -694,6 +713,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
     setChatError(null);
     setAssessmentId('');
     setSubmittedSnapshot(null);
+    setShowDebugDetails(false);
 
     // Scroll back to the top of the form smoothly
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1361,9 +1381,9 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
             </div>
           </div>
 
-          {/* 3 Metric Summary Boxes */}
+          {/* 3 Metric Summary Boxes: Overall Risk, Health Score, Model Risk */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Box 1: OVERALL RISK LEVEL */}
+            {/* Box 1: OVERALL HEALTH RISK */}
             <div
               className={`p-5 rounded-2xl text-center flex flex-col justify-center items-center border ${
                 result.risk_level.toLowerCase().includes('high')
@@ -1374,35 +1394,117 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
               }`}
             >
               <div className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-80">
-                Overall Risk Level
+                Overall Health Risk
               </div>
               <div className="text-2xl sm:text-3xl font-black tracking-tight">
                 {result.risk_level}
               </div>
             </div>
 
-            {/* Box 2: PRIMARY AREA CHECKED */}
-            <div className="p-5 rounded-2xl text-center flex flex-col justify-center items-center bg-blue-50/90 border border-blue-200 text-blue-950">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 mb-1">
-                Primary Focus Area
-              </div>
-              <div className="text-sm sm:text-base font-bold text-blue-900 leading-snug whitespace-pre-line">
-                {result.target_disease}
-              </div>
-            </div>
-
-            {/* Box 3: HEALTH INDEX */}
+            {/* Box 2: HEALTH SCORE */}
             <div className="p-5 rounded-2xl text-center flex flex-col justify-center items-center bg-indigo-50/90 border border-indigo-200 text-indigo-950">
               <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 mb-1">
-                Health Index
+                Health Score
               </div>
               <div className="text-2xl sm:text-3xl font-black text-indigo-900">
                 {result.health_index}
                 <span className="text-xs font-normal text-indigo-600"> / 100</span>
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">
-                Calculated Risk: {result.risk_percentage}
+                Evaluated Baseline
               </div>
+            </div>
+
+            {/* Box 3: OVERALL MODEL RISK PROBABILITY */}
+            <div className="p-5 rounded-2xl text-center flex flex-col justify-center items-center bg-blue-50/90 border border-blue-200 text-blue-950">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 mb-1">
+                Calculated Risk Score
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-blue-950">
+                {result.risk_percentage}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Model Composite Index
+              </div>
+            </div>
+          </div>
+
+          {/* YOUR DISEASE RISK RESULTS — EVERY CONDITION RETURNED BY RENDER ML */}
+          <div className="space-y-4 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+              <div>
+                <h4 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  <span>Your Disease Risk Results</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Multi-condition probabilities evaluated directly by the Render machine learning engine ({result.predictions.length} condition{result.predictions.length === 1 ? '' : 's'})
+                </p>
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold self-start sm:self-auto">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Prediction source: Render ML model</span>
+              </div>
+            </div>
+
+            {/* Multi-Disease Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {result.predictions.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="glass-panel rounded-2xl p-4 sm:p-5 border border-slate-200/90 bg-white/90 shadow-xs hover:shadow-md transition-all space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="text-sm font-bold text-slate-900 leading-snug break-words">
+                        {item.disease}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-medium">
+                        Powered by your ML assessment
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-xl sm:text-2xl font-black text-slate-900">
+                        {item.percentageFormatted}
+                      </div>
+                      <span
+                        className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                          item.riskCategory === 'High'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : item.riskCategory === 'Moderate'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        {item.riskCategory} Risk
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Visual Progress / Risk Bar */}
+                  <div className="space-y-1">
+                    <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          item.riskCategory === 'High'
+                            ? 'bg-gradient-to-r from-rose-500 to-rose-600'
+                            : item.riskCategory === 'Moderate'
+                            ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                            : 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(4, item.percentage))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+                      <span>0%</span>
+                      <span>50%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1781,6 +1883,25 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
                     </span>
                   </div>
                 </form>
+              </div>
+            )}
+          </div>
+
+          {/* DEVELOPER DEBUG: ML RESPONSE DETAILS */}
+          <div className="pt-2 border-t border-slate-200/60">
+            <button
+              type="button"
+              onClick={() => setShowDebugDetails(!showDebugDetails)}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>{showDebugDetails ? '▼' : '▶'} ML Response Details (Debug Inspector)</span>
+            </button>
+            {showDebugDetails && result.rawResponse && (
+              <div className="mt-2 p-3.5 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto shadow-inner border border-slate-800 space-y-1">
+                <div className="text-slate-400 text-[10px] font-sans font-bold uppercase tracking-wider">
+                  Raw JSON Payload from Render API ({RENDER_PREDICT_URL})
+                </div>
+                <pre className="text-emerald-400 whitespace-pre-wrap">{JSON.stringify(result.rawResponse, null, 2)}</pre>
               </div>
             )}
           </div>

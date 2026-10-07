@@ -10,6 +10,16 @@ export interface User {
   syncedToSupabase?: boolean;
 }
 
+export interface DiseasePredictionItem {
+  disease: string;
+  probability: number;
+  percentage: number;
+  percentageFormatted: string;
+  riskCategory?: 'Low' | 'Moderate' | 'High';
+  source: 'render_ml';
+  rawLabel?: string;
+}
+
 export interface SavedAssessment {
   id: string;
   userId: string;
@@ -29,4 +39,7 @@ export interface SavedAssessment {
   recommendations: string[];
   checkedAreas?: string[];
   isSample?: boolean;
+  predictions?: DiseasePredictionItem[];
+  condition_results?: Record<string, number>;
+  rawRenderResponse?: any;
 }

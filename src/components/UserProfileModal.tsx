@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SavedAssessment } from '../types';
+import { normalizeRenderPredictions } from '../utils/predictionNormalization';
 import {
   X,
   User as UserIcon,
@@ -217,16 +218,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                     key={a.id}
                     className="border border-slate-200 rounded-xl p-4 bg-white hover:border-slate-300 transition-colors shadow-2xs space-y-3"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">{a.disease}</span>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm whitespace-pre-line">{a.disease}</span>
                         {getRiskBadge(a.riskLevel)}
                         <span className="text-xs font-semibold text-slate-500">
-                          ({a.probability}% Estimated Risk)
+                          ({a.probability}% Composite Score)
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
                         <span className="flex items-center gap-1 text-[11px]">
                           <Clock className="w-3 h-3 text-slate-400" />
                           {dateStr}
@@ -241,6 +242,31 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                         </button>
                       </div>
                     </div>
+
+                    {/* Multi-Condition Predictions */}
+                    {(() => {
+                      const preds =
+                        (a.predictions && a.predictions.length > 0 && a.predictions) ||
+                        normalizeRenderPredictions({
+                          target_disease: a.disease,
+                          probability: a.probability,
+                          condition_results: a.condition_results,
+                        });
+                      if (!preds || preds.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Predictions:</span>
+                          {preds.map((p, pIdx) => (
+                            <span
+                              key={pIdx}
+                              className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] font-semibold text-blue-900"
+                            >
+                              {p.disease}: <strong className="text-blue-700">{p.percentageFormatted}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                     {/* Snapshot parameters */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
