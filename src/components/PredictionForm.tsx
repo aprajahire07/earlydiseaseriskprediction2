@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   HeartPulse,
@@ -16,6 +16,12 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  Send,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Bot,
+  HelpCircle,
 } from 'lucide-react';
 
 // Exact structure expected from Render ML backend
@@ -40,6 +46,30 @@ interface DisplayPrediction {
   target_disease: string;
   recommendations: string[];
   health_index: number;
+}
+
+// Interactive chat message structure
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: Date;
+}
+
+// Snapshot of assessed inputs passed to AI context
+interface AssessedDataSnapshot {
+  fullName: string;
+  age: number;
+  gender: string;
+  heightCm: number;
+  weightKg: number;
+  bmi: number;
+  bloodPressure: string;
+  smokingHabit: string;
+  alcoholConsumption: string;
+  physicalActivity: string;
+  familyHistory: string;
+  bloodSugar: string;
 }
 
 // Render ML Backend URL configuration
@@ -77,6 +107,9 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
   const [familyMedicalHistory, setFamilyMedicalHistory] = useState<string[]>([]);
   const [bloodSugarLevel, setBloodSugarLevel] = useState<string>('');
 
+  // Sample data mode indicator
+  const [isSampleDataLoaded, setIsSampleDataLoaded] = useState<boolean>(false);
+
   // Backend Connectivity & Processing State
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
   const [buttonState, setButtonState] = useState<ButtonState>('ready');
@@ -86,6 +119,130 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
   // Result state — ONLY populated from a successful Render API response
   const [result, setResult] = useState<DisplayPrediction | null>(null);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+
+  // Unique assessment ID generated upon each successful Render ML response
+  const [assessmentId, setAssessmentId] = useState<string>('');
+  const [submittedSnapshot, setSubmittedSnapshot] = useState<AssessedDataSnapshot | null>(null);
+
+  // Automatic AI Health Summary State
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isAiSummaryLoading, setIsAiSummaryLoading] = useState<boolean>(false);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
+
+  // Inline Interactive AI Chat State (strictly max 5 user messages per assessment)
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [userMessageCount, setUserMessageCount] = useState<number>(0);
+  const [chatRemaining, setChatRemaining] = useState<number>(5);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll to bottom of chat when new messages or loading states occur
+  useEffect(() => {
+    if (isChatOpen && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatLoading, isChatOpen]);
+
+  // Fetch automatic AI Health Summary from server
+  const fetchAiSummary = async (assessmentData: AssessedDataSnapshot, renderRes: DisplayPrediction) => {
+    setIsAiSummaryLoading(true);
+    setAiSummaryError(null);
+    try {
+      const res = await fetch('/api/ai-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assessment: assessmentData,
+          renderResult: renderRes,
+        }),
+      });
+      if (!res.ok) throw new Error('AI summary response failed');
+      const data = await res.json();
+      if (data && data.summary) {
+        setAiSummary(data.summary);
+      }
+    } catch (err) {
+      console.warn('AI summary fetch warning:', err);
+      setAiSummaryError('AI summary is momentarily unavailable.');
+    } finally {
+      setIsAiSummaryLoading(false);
+    }
+  };
+
+  // Send an inline chat message to Gemini via server (strictly capped at 5 user messages)
+  const handleSendChatMessage = async (textToSend?: string) => {
+    const query = (textToSend ?? chatInput).trim();
+    if (!query || isChatLoading || userMessageCount >= 5 || chatRemaining <= 0) return;
+
+    setChatError(null);
+    const userMsg: ChatMessage = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      role: 'user',
+      text: query,
+      timestamp: new Date(),
+    };
+
+    const updated = [...chatMessages, userMsg];
+    setChatMessages(updated);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    const nextCount = userMessageCount + 1;
+    setUserMessageCount(nextCount);
+    setChatRemaining(Math.max(0, 5 - nextCount));
+
+    try {
+      const res = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assessmentId,
+          assessment: submittedSnapshot,
+          renderResult: result,
+          messages: updated.map((m) => ({ role: m.role, text: m.text })),
+          question: query,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 429 || data?.limitReached) {
+          setUserMessageCount(5);
+          setChatRemaining(0);
+          setChatError(data?.error || "You've reached the 5-question limit for this assessment.");
+          return;
+        }
+        throw new Error(data?.error || 'Failed to receive AI reply');
+      }
+
+      const aiMsg: ChatMessage = {
+        id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        role: 'assistant',
+        text: data.reply || 'Thank you for your question. Maintaining healthy habits and consulting your physician is recommended.',
+        timestamp: new Date(),
+      };
+
+      setChatMessages([...updated, aiMsg]);
+      if (typeof data.used === 'number') {
+        setUserMessageCount(data.used);
+      }
+      if (typeof data.remaining === 'number') {
+        setChatRemaining(data.remaining);
+      }
+    } catch (err: any) {
+      console.error('Chat error:', err);
+      setChatError('AI assistant is momentarily unavailable. Please try again.');
+      // Revert quota consumption on network failure
+      setUserMessageCount(userMessageCount);
+      setChatRemaining(Math.max(0, 5 - userMessageCount));
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   // Pre-fill user name if logged in
   useEffect(() => {
@@ -213,7 +370,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
 
   // Helper to load sample test inputs (DOES NOT TRIGGER PREDICTION OR FALLBACK)
   const handleLoadSample = () => {
-    if (!fullName) setFullName(user?.name || 'Alex Morgan');
+    setFullName(user?.name ? `${user.name} (Sample)` : 'Alex Morgan');
     setAge('42');
     setGender('Male');
     setHeightCm('175');
@@ -224,9 +381,32 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
     setPhysicalActivity('Moderate');
     setFamilyMedicalHistory(['High Blood Pressure', 'Diabetes']);
     setBloodSugarLevel('Elevated (105 mg/dL)');
+    setIsSampleDataLoaded(true);
     setValidationError('');
     setBackendError(false);
     setResult(null);
+    setIsSaved(false);
+    setButtonState('ready');
+  };
+
+  // Helper to clear sample values and return to blank personal form
+  const handleClearSample = () => {
+    setFullName(user?.name || '');
+    setAge('');
+    setGender('');
+    setHeightCm('');
+    setWeightKg('');
+    setBmi('');
+    setBloodPressure('');
+    setSmokingHabit('');
+    setAlcoholConsumption('');
+    setPhysicalActivity('');
+    setFamilyMedicalHistory([]);
+    setBloodSugarLevel('');
+    setIsSampleDataLoaded(false);
+    setResult(null);
+    setValidationError('');
+    setBackendError(false);
     setIsSaved(false);
     setButtonState('ready');
   };
@@ -385,6 +565,38 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
       setBackendStatus('online');
       setButtonState('success');
 
+      // Create snapshot of exact evaluated parameters for contextual AI analysis
+      const newAssessmentId = `asmt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      setAssessmentId(newAssessmentId);
+
+      const assessedSnapshot: AssessedDataSnapshot = {
+        fullName: fullName.trim() || user?.name || 'User',
+        age: numAge,
+        gender,
+        heightCm: numHeight,
+        weightKg: numWeight,
+        bmi: numericBmi,
+        bloodPressure,
+        smokingHabit,
+        alcoholConsumption,
+        physicalActivity,
+        familyHistory: familyStr,
+        bloodSugar: bloodSugarLevel.trim() || 'Normal',
+      };
+      setSubmittedSnapshot(assessedSnapshot);
+
+      // Reset inline chat state for this fresh assessment
+      setIsChatOpen(false);
+      setChatMessages([]);
+      setUserMessageCount(0);
+      setChatRemaining(5);
+      setChatInput('');
+      setIsChatLoading(false);
+      setChatError(null);
+
+      // Automatically fetch AI Health Summary for this result
+      fetchAiSummary(assessedSnapshot, displayResult);
+
       // 7. ONLY AFTER SUCCESSFUL RENDER RESPONSE: Save to Supabase
       if (isAuthenticated && user) {
         const calculatedRiskLevel: 'Low' | 'Moderate' | 'High' =
@@ -416,6 +628,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
               'Stroke Risk',
               'Metabolic Health',
             ],
+            isSample: isSampleDataLoaded,
           });
           setIsSaved(true);
         } catch (saveErr) {
@@ -467,6 +680,23 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
     setBackendError(false);
     setIsSaved(false);
     setButtonState('ready');
+
+    // Reset AI summary & chat
+    setAiSummary(null);
+    setIsAiSummaryLoading(false);
+    setAiSummaryError(null);
+    setIsChatOpen(false);
+    setChatMessages([]);
+    setUserMessageCount(0);
+    setChatRemaining(5);
+    setChatInput('');
+    setIsChatLoading(false);
+    setChatError(null);
+    setAssessmentId('');
+    setSubmittedSnapshot(null);
+
+    // Scroll back to the top of the form smoothly
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const familyConditionsList = [
@@ -532,10 +762,10 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
                 type="button"
                 onClick={handleLoadSample}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-slate-600 bg-white/80 hover:bg-white border border-slate-200/80 hover:border-slate-300 shadow-2xs transition-all cursor-pointer w-fit"
-                title="Fill sample inputs for testing (does not trigger prediction)"
+                title="Load sample data for testing (does not trigger prediction)"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                <span>Fill Sample Inputs</span>
+                <span>Load Sample Data</span>
               </button>
             </div>
           </div>
@@ -574,6 +804,27 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
             </div>
           </div>
         </div>
+
+        {/* Sample Data Visual Indicator Banner */}
+        {isSampleDataLoaded && (
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-950 font-extrabold text-[10px] uppercase tracking-wider shrink-0">
+                Sample Data
+              </span>
+              <span className="font-medium text-amber-900">
+                Example values — replace with your information
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearSample}
+              className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer shrink-0 self-end sm:self-auto"
+            >
+              Clear Example Values
+            </button>
+          </div>
+        )}
 
         {/* Validation Notice Banner */}
         {validationError && (
@@ -1156,7 +1407,23 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           </div>
 
           {/* Automatic Saving Confirmation Bar */}
-          {isAuthenticated && user ? (
+          {isSampleDataLoaded ? (
+            <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
+              <div className="flex items-center gap-2 font-bold">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Sample Data Test Response — Live prediction from Render ML Engine (not stored as real patient history).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearSample}
+                className="font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer shrink-0"
+              >
+                Enter Your Real Health Data &rarr;
+              </button>
+            </div>
+          ) : isAuthenticated && user ? (
             <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-950">
               <div className="flex items-center gap-2 font-bold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1201,6 +1468,321 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* AUTOMATIC AI HEALTH SUMMARY */}
+          <div
+            id="ai-health-summary-panel"
+            className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-white/95 via-blue-50/40 to-indigo-50/50 border border-blue-200/80 shadow-sm space-y-3 relative overflow-hidden backdrop-blur-xl"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-100/80 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 tracking-tight">
+                    AI Health Summary
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Clinical preventive perspective synthesized by Gemini
+                  </p>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-100/70 border border-blue-200 text-blue-700 text-[10px] font-bold">
+                <ShieldCheck className="w-3 h-3 text-blue-600" />
+                <span>Grounded in Render ML Result</span>
+              </div>
+            </div>
+
+            {isAiSummaryLoading ? (
+              <div className="py-6 flex flex-col items-center justify-center gap-3 text-center">
+                <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Synthesizing your personalized health analysis...
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Connecting vitals with preventive lifestyle insights
+                  </p>
+                </div>
+              </div>
+            ) : aiSummary ? (
+              <div className="space-y-3">
+                <div className="text-xs sm:text-sm text-slate-700 leading-relaxed space-y-2 whitespace-pre-line">
+                  {aiSummary}
+                </div>
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Educational preventive analysis • Not a diagnostic determination</span>
+                  <span className="font-medium text-slate-500">Gemini 3.8 Flash</span>
+                </div>
+              </div>
+            ) : aiSummaryError ? (
+              <div className="py-3 flex items-center justify-between text-xs text-rose-600 bg-rose-50/60 p-3 rounded-xl border border-rose-200">
+                <span>{aiSummaryError}</span>
+                {submittedSnapshot && (
+                  <button
+                    type="button"
+                    onClick={() => fetchAiSummary(submittedSnapshot, result)}
+                    className="font-bold underline text-rose-700 hover:text-rose-900 cursor-pointer"
+                  >
+                    Retry Summary
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* INLINE AI CHAT TRIGGER & PANEL */}
+          <div className="pt-2 border-t border-slate-200/60 space-y-4">
+            {!isChatOpen ? (
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-cyan-50/70 border border-blue-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <span>Have a question about your result?</span>
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Ask our inline AI assistant about your risk level, BMI, or specific preventive habits.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="btn-ask-ai"
+                  onClick={() => setIsChatOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-98 transition-all cursor-pointer shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <span>✨ Ask AI</span>
+                </button>
+              </div>
+            ) : (
+              /* Expanded Glassmorphism Chat Panel */
+              <div
+                id="inline-ai-chat-panel"
+                className="glass-panel rounded-2xl p-4 sm:p-6 space-y-4 border border-blue-200/80 bg-white/80 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-200"
+              >
+                {/* Chat Header */}
+                <div className="flex items-center justify-between border-b border-slate-200/70 pb-3 gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>AI Assessment Assistant</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Discussing your {result.risk_level} risk • {result.target_disease}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Remaining message counter badge */}
+                    <div
+                      id="ai-message-counter"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                        chatRemaining > 1
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : chatRemaining === 1
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {chatRemaining > 0 && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      )}
+                      <span>{chatRemaining} of 5 questions remaining</span>
+                    </div>
+
+                    {/* Minimize / Close Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setIsChatOpen(false)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="Hide chat"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Question Suggestions (Shown before user sends first message) */}
+                {userMessageCount === 0 && !isChatLoading && (
+                  <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/60 border border-blue-100/80">
+                    <div className="text-[11px] font-bold text-blue-800 flex items-center gap-1.5">
+                      <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Suggested questions you can ask right now:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {[
+                        'Why is my risk at this level?',
+                        'What habits should I improve first?',
+                        'Is my BMI considered healthy?',
+                      ].map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSendChatMessage(suggestion)}
+                          className="text-xs px-3 py-1.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 hover:text-blue-700 border border-slate-200/80 hover:border-blue-300 font-medium transition-all shadow-2xs hover:shadow-xs cursor-pointer text-left"
+                        >
+                          ✦ {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Scrollable Chat Window (Height 260px - 320px) */}
+                <div
+                  id="chat-message-container"
+                  className="h-[270px] overflow-y-auto pr-1 space-y-3 rounded-xl bg-slate-50/50 p-3 border border-slate-200/60 scroll-smooth"
+                >
+                  {/* Initial Welcome AI Message */}
+                  <div className="flex items-start gap-2.5 max-w-[85%] mr-auto">
+                    <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="bg-white/95 border border-slate-200/80 rounded-2xl rounded-tl-xs p-3 text-xs sm:text-sm text-slate-800 shadow-2xs leading-relaxed">
+                      Hello{fullName ? `, ${fullName}` : ''}! I'm your AI health assistant. I've reviewed your assessment result (<strong>{result.risk_level} risk</strong> in {result.target_disease}) and recorded vitals. What would you like to know about your numbers or recommended next steps?
+                    </div>
+                  </div>
+
+                  {/* Conversation Messages */}
+                  {chatMessages.map((msg) => {
+                    const isUser = msg.role === 'user';
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex items-start gap-2 max-w-[85%] ${
+                          isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                        }`}
+                      >
+                        {!isUser && (
+                          <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                        <div
+                          className={`p-3 text-xs sm:text-sm leading-relaxed shadow-2xs ${
+                            isUser
+                              ? 'bg-blue-600 text-white rounded-2xl rounded-tr-xs font-medium'
+                              : 'bg-white/95 border border-slate-200/80 rounded-2xl rounded-tl-xs text-slate-800'
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Smooth Loading Indicator */}
+                  {isChatLoading && (
+                    <div className="flex items-start gap-2 max-w-[85%] mr-auto">
+                      <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="bg-white/90 border border-slate-200/80 rounded-2xl rounded-tl-xs p-3 text-xs text-slate-500 shadow-2xs flex items-center gap-2">
+                        <Activity className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                        <span>AI is reviewing your assessment vitals...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Inline Error Notice */}
+                  {chatError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 text-center font-medium">
+                      {chatError}
+                    </div>
+                  )}
+
+                  {/* Limit Reached Banner inside Chat Window */}
+                  {(userMessageCount >= 5 || chatRemaining <= 0) && (
+                    <div
+                      id="chat-limit-reached-card"
+                      className="p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-center space-y-2 mt-2"
+                    >
+                      <div className="text-xs font-bold text-amber-900 flex items-center justify-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600" />
+                        <span>You've reached the 5-question limit for this assessment.</span>
+                      </div>
+                      <p className="text-[11px] text-amber-700">
+                        To ask more questions, start a new health assessment with your latest information.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Start New Assessment</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Chat Input & Submission Controls */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendChatMessage();
+                  }}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      disabled={isChatLoading || userMessageCount >= 5 || chatRemaining <= 0}
+                      placeholder={
+                        userMessageCount >= 5 || chatRemaining <= 0
+                          ? "5-question limit reached for this assessment."
+                          : "Ask about your risk score, BMI, or next steps..."
+                      }
+                      className={`flex-1 px-4 py-2.5 text-xs sm:text-sm rounded-xl border transition-all ${
+                        userMessageCount >= 5 || chatRemaining <= 0
+                          ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                          : 'bg-white/90 hover:bg-white focus:bg-white border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 text-slate-800'
+                      }`}
+                    />
+                    <button
+                      type="submit"
+                      id="btn-send-chat"
+                      disabled={
+                        !chatInput.trim() ||
+                        isChatLoading ||
+                        userMessageCount >= 5 ||
+                        chatRemaining <= 0
+                      }
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all ${
+                        !chatInput.trim() ||
+                        isChatLoading ||
+                        userMessageCount >= 5 ||
+                        chatRemaining <= 0
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-98 shadow-blue-500/20'
+                      }`}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Send</span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-400 gap-1 px-1">
+                    <span>
+                      Educational answers strictly grounded in your current assessment.
+                    </span>
+                    <span>
+                      Message {Math.min(5, userMessageCount)} of 5 used
+                    </span>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}

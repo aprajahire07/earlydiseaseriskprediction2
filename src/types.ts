@@ -28,4 +28,5 @@ export interface SavedAssessment {
   bloodSugarLevel?: string;
   recommendations: string[];
   checkedAreas?: string[];
+  isSample?: boolean;
 }

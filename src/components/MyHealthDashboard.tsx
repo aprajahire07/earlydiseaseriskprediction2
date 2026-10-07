@@ -199,9 +199,10 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
     );
   }
 
-  // Derived user statistics
-  const totalAssessments = assessments.length;
-  const latestAssessment = totalAssessments > 0 ? assessments[0] : null;
+  // Derived user statistics (strictly excluding sample-mode tests)
+  const realAssessments = assessments.filter((a) => !a.isSample);
+  const totalAssessments = realAssessments.length;
+  const latestAssessment = totalAssessments > 0 ? realAssessments[0] : null;
   const latestRisk = latestAssessment ? latestAssessment.riskLevel : 'None';
   const latestHealthIndex = latestAssessment
     ? latestAssessment.healthIndex || Math.max(5, Math.min(98, Math.round(100 - latestAssessment.probability)))
@@ -504,7 +505,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
         </div>
 
         {/* Empty State */}
-        {assessments.length === 0 ? (
+        {realAssessments.length === 0 ? (
           <div className="glass-panel rounded-3xl p-8 sm:p-12 text-center space-y-5 border border-white/90 shadow-md">
             <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
               <Sparkles className="w-7 h-7" />
@@ -530,7 +531,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
           </div>
         ) : (
           <div className="space-y-4">
-            {assessments.map((item) => {
+            {realAssessments.map((item) => {
               const itemIdx = item.healthIndex || Math.max(5, Math.min(98, Math.round(100 - item.probability)));
               return (
                 <div
