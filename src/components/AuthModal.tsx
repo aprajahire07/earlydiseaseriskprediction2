@@ -7,19 +7,14 @@ import {
   User as UserIcon,
   Eye,
   EyeOff,
-  Database,
   Sparkles,
-  CheckCircle2,
-  Phone,
-  FileText,
 } from 'lucide-react';
-import { SUPABASE_PROJECT_ID } from '../lib/supabase';
 
 interface AuthModalProps {
   onOpenFullPortal?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
+export const AuthModal: React.FC<AuthModalProps> = () => {
   const {
     authModalOpen,
     closeAuthModal,
@@ -27,16 +22,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
     setAuthModalMode,
     login,
     register,
-    supabaseStatus,
   } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
-  const [gender, setGender] = useState('');
-  const [phone, setPhone] = useState('');
-  const [lifestyleNotes, setLifestyleNotes] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,10 +43,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
       if (authModalMode === 'login') {
         const res = await login(email, password);
         if (!res.success) {
-          setError(res.error || 'Failed to sign in. Please verify your details.');
+          setError(res.error || 'Invalid email or password.');
         } else {
           setEmail('');
           setPassword('');
+          closeAuthModal();
         }
       } else {
         const parsedAge = age ? parseInt(age, 10) : undefined;
@@ -63,25 +55,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
           name,
           email,
           password,
-          parsedAge,
-          gender,
-          phone,
-          lifestyleNotes
+          parsedAge
         );
         if (!res.success) {
-          setError(res.error || 'Registration failed. Please check your inputs.');
+          setError(res.error || 'Registration failed. Please check your details.');
         } else {
           setName('');
           setEmail('');
           setPassword('');
           setAge('');
-          setGender('');
-          setPhone('');
-          setLifestyleNotes('');
+          closeAuthModal();
         }
       }
     } catch {
-      setError('An unexpected error occurred. Please try again.');
+      setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -93,46 +80,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
     setError(null);
     setLoading(true);
     const res = await login('demo@healthai.org', 'demo123');
-    if (!res.success) {
+    if (res.success) {
+      closeAuthModal();
+    } else {
       setError(res.error || 'Failed to log in demo account');
     }
     setLoading(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col"
+        className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header decoration */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 text-white relative shrink-0">
+        {/* Header */}
+        <div className="p-6 pb-4 relative border-b border-slate-100">
           <button
             type="button"
             onClick={closeAuthModal}
-            className="absolute top-4 right-4 p-1.5 rounded-full text-blue-100 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="absolute top-5 right-5 p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             aria-label="Close dialog"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-100 uppercase tracking-wider mb-1">
-            <Database className="w-3.5 h-3.5" />
-            <span>Supabase Cloud Authentication ({SUPABASE_PROJECT_ID})</span>
-          </div>
-
-          <h2 className="text-lg font-bold tracking-tight">
-            {authModalMode === 'login' ? 'Patient Sign In' : 'Register & Save Health Profile'}
+          <h2 className="text-xl font-bold text-slate-900">
+            {authModalMode === 'login' ? 'Sign In' : 'Create Account'}
           </h2>
-          <p className="text-xs text-blue-100 mt-1 leading-relaxed">
+          <p className="text-xs text-slate-500 mt-1">
             {authModalMode === 'login'
-              ? 'Sign in to access your disease risk reports and synced health history.'
-              : 'Your registration inputs are saved directly into your Supabase database.'}
+              ? 'Access your saved health predictions and reports.'
+              : 'Save your health assessments safely.'}
           </p>
         </div>
 
         {/* Tab switch */}
-        <div className="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold shrink-0">
+        <div className="flex border-b border-slate-200 bg-slate-50/80 text-xs font-semibold">
           <button
             type="button"
             onClick={() => {
@@ -159,33 +143,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            Create Account
+            Sign Up
           </button>
         </div>
 
-        {/* Form Body - Scrollable */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 overflow-y-auto flex-1">
+        {/* Simple Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
-            <div className="p-3 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700">
+            <div className="p-2.5 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700">
               {error}
             </div>
           )}
 
           {authModalMode === 'register' && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Full Name <span className="text-red-500">*</span>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Your Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                  <UserIcon className="w-4 h-4" />
-                </div>
+                <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. John Doe"
+                  placeholder="e.g. Rahul Sharma"
                   className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                 />
               </div>
@@ -193,13 +175,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Email Address <span className="text-red-500">*</span>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Email Address
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Mail className="w-4 h-4" />
-              </div>
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
                 type="email"
                 required
@@ -212,26 +192,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Password <span className="text-red-500">*</span>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Password
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Lock className="w-4 h-4" />
-              </div>
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
+                placeholder="At least 6 characters"
                 minLength={6}
                 className="w-full pl-9 pr-10 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -239,112 +217,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onOpenFullPortal }) => {
           </div>
 
           {authModalMode === 'register' && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Age</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="120"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    placeholder="e.g. 35"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Gender</label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  >
-                    <option value="">Select</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Phone className="w-3.5 h-3.5" />
-                  </div>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (555) 000-0000"
-                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Lifestyle / Medical Background
-                </label>
-                <textarea
-                  rows={2}
-                  value={lifestyleNotes}
-                  onChange={(e) => setLifestyleNotes(e.target.value)}
-                  placeholder="e.g. sedentary job, smoker, family history..."
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                />
-              </div>
-            </>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Age <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                placeholder="e.g. 28"
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              />
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2 mt-2"
           >
             {loading ? (
-              <span>Saving to Supabase...</span>
+              <span>Please wait...</span>
             ) : (
-              <span>{authModalMode === 'login' ? 'Sign In' : 'Register & Sync to Supabase'}</span>
+              <span>{authModalMode === 'login' ? 'Sign In' : 'Create Account'}</span>
             )}
           </button>
 
-          {/* Demo Button */}
-          <div className="pt-2 border-t border-slate-200">
+          {/* Quick Demo */}
+          <div className="pt-2 text-center">
             <button
               type="button"
               onClick={handleFillDemo}
               disabled={loading}
-              className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>One-Click Login as Demo Patient (Alex Morgan)</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Use 1-Click Demo Login</span>
             </button>
           </div>
         </form>
-
-        {/* Modal Footer Note */}
-        <div className="bg-slate-50 px-5 py-2.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-600 shrink-0">
-          <span className="flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Supabase: {supabaseStatus.connected ? 'Connected' : 'Configured'}</span>
-          </span>
-          {onOpenFullPortal && (
-            <button
-              type="button"
-              onClick={() => {
-                closeAuthModal();
-                onOpenFullPortal();
-              }}
-              className="text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
-            >
-              Open Full Page &amp; SQL &rarr;
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );

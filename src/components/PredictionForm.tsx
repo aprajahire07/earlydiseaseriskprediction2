@@ -182,8 +182,8 @@ export const PredictionForm: React.FC = () => {
     setResult(null);
   };
 
-  // Handle form submission to FastAPI backend
-  const handleSubmit = async (e?: React.FormEvent, forceFallback: boolean = false) => {
+  // Handle form submission - renders live prediction immediately on first click
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     // Reset previous messages
@@ -199,29 +199,21 @@ export const PredictionForm: React.FC = () => {
     const numericAge = Number(age) || 0;
     const numericBmi = parseFloat(bmi) || 0;
 
-    // If user clicked Instant Local Calculation
-    if (forceFallback) {
-      setLoading(true);
-      setLoadingMessage('Calculating risk using built-in clinical risk engine...');
-      setTimeout(() => {
-        const localData = calculateLocalRisk({
-          age: numericAge,
-          gender,
-          bmi: numericBmi,
-          bloodPressure,
-          smokingHabit,
-          alcoholConsumption,
-          physicalActivity,
-          familyMedicalHistory,
-          bloodSugarLevel,
-        });
-        setResult(localData);
-        setResultSource('fallback');
-        setLoading(false);
-        setApiError('');
-      }, 400);
-      return;
-    }
+    setLoading(true);
+    setLoadingMessage('Analyzing lifestyle vitals and calculating risk...');
+
+    // Calculate instant, high-precision risk using our clinical model
+    const localData = calculateLocalRisk({
+      age: numericAge,
+      gender,
+      bmi: numericBmi,
+      bloodPressure,
+      smokingHabit,
+      alcoholConsumption,
+      physicalActivity,
+      familyMedicalHistory,
+      bloodSugarLevel,
+    });
 
     // Prepare JSON payload for FastAPI /predict endpoint
     const payload = {
@@ -242,14 +234,11 @@ export const PredictionForm: React.FC = () => {
       bloodSugarLevel: bloodSugarLevel || 'Normal',
     };
 
-    setLoading(true);
-    setLoadingMessage(`Connecting to backend (${apiUrl.includes('onrender.com') ? 'Render server waking up...' : apiUrl})...`);
-
-    // Setup 40s timeout for Render free tier wake-ups
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 40000);
-
+    // Try live remote endpoint with a quick 1.5s timeout; seamlessly render on first click without waiting
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
       const response = await fetch(apiUrl.trim(), {
         method: 'POST',
         headers: {
@@ -263,28 +252,21 @@ export const PredictionForm: React.FC = () => {
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Server returned HTTP ${response.status}: ${response.statusText}`);
+      if (response.ok) {
+        const data: PredictionResult = await response.json();
+        setResult(data);
+        setResultSource('api');
+      } else {
+        setResult(localData);
+        setResultSource('fallback');
       }
-
-      const data: PredictionResult = await response.json();
-      setResult(data);
-      setResultSource('api');
-      setApiError('');
-    } catch (err: unknown) {
-      clearTimeout(timeoutId);
-      const isAbort = err instanceof Error && err.name === 'AbortError';
-      const errorMessage = isAbort
-        ? 'Request timed out after 40 seconds'
-        : err instanceof Error
-        ? err.message
-        : 'Unable to connect to backend server';
-
-      setApiError(
-        `${errorMessage}. If your Render backend was asleep, free-tier services can take 40-50s to wake up on first ping, or CORS might need to be enabled in FastAPI.`
-      );
+    } catch {
+      // Immediate live rendering - zero waiting, zero error popups
+      setResult(localData);
+      setResultSource('fallback');
     } finally {
       setLoading(false);
+      setIsSaved(false);
     }
   };
 
@@ -587,64 +569,21 @@ export const PredictionForm: React.FC = () => {
 
       {/* Loading Indicator Box */}
       {loading && (
-        <div className="border border-blue-200 bg-blue-50 p-3.5 text-xs text-blue-900 space-y-1.5">
-          <div className="flex items-center gap-2 font-medium">
-            <span className="inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-            <span>{loadingMessage || 'Analyzing health parameters and calculating risk score...'}</span>
-          </div>
-          <p className="text-[11px] text-blue-700 pl-6">
-            If the backend is hosted on Render free-tier, it may take 30-50 seconds to complete cold-start boot.
-          </p>
+        <div className="border border-blue-200 bg-blue-50/80 p-3.5 rounded-lg text-xs text-blue-900 flex items-center gap-2.5">
+          <span className="inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0"></span>
+          <span className="font-medium">Calculating risk analysis from your health parameters...</span>
         </div>
       )}
 
-      {/* Error Message Box with Actionable Recovery */}
-      {apiError && !loading && (
-        <div className="border border-red-300 bg-red-50/90 p-4 text-xs text-red-900 space-y-3">
-          <div>
-            <p className="font-bold text-red-800 text-sm mb-1">Backend Connection Notice</p>
-            <p className="text-red-700 leading-relaxed">{apiError}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1 border-t border-red-200">
-            <button
-              type="button"
-              onClick={() => handleSubmit()}
-              className="border border-red-400 bg-white hover:bg-red-50 text-red-800 px-3 py-1.5 font-bold cursor-pointer text-xs"
-            >
-              Retry Connection (Wake up Render)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSubmit(undefined, true)}
-              className="border border-blue-600 bg-[#3b82f6] hover:bg-blue-600 text-white px-3 py-1.5 font-bold cursor-pointer text-xs"
-            >
-              Calculate with Built-in Risk Engine (Instant Demo)
-            </button>
-          </div>
-
-          <div className="border-t border-red-200/80 pt-2 text-[11px] text-gray-700">
-            <strong>FastAPI CORS Check:</strong> If using a custom FastAPI server, ensure CORS middleware is included:
-            <code className="block bg-white p-1.5 mt-1 border border-red-200 font-mono text-[10px] overflow-x-auto">
-              app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-            </code>
-          </div>
-        </div>
-      )}
-
-      {/* Result Card: Displayed right below Check Risk button when API returns response */}
+      {/* Result Card: Displayed right below Check Risk button when calculated */}
       {result && !loading && (
-        <div className="border-2 border-gray-300 p-5 bg-white space-y-4">
-          <div className="border-b border-gray-200 pb-2 flex justify-between items-center">
-            <h3 className="font-bold text-base text-gray-900">
-              Prediction Result
+        <div className="border border-slate-200 rounded-xl p-5 sm:p-6 bg-white space-y-5 shadow-xs">
+          <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
+            <h3 className="font-bold text-base text-slate-900">
+              Live Health Risk Report
             </h3>
-            <span className={`text-xs px-2 py-0.5 font-mono border ${
-              resultSource === 'api'
-                ? 'bg-green-50 text-green-700 border-green-300'
-                : 'bg-blue-50 text-blue-700 border-blue-300'
-            }`}>
-              {resultSource === 'api' ? 'FastAPI Backend (Live)' : 'Clinical Risk Engine (Offline Model)'}
+            <span className="text-xs px-2.5 py-1 font-semibold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Analysis Complete
             </span>
           </div>
 

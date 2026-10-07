@@ -81,19 +81,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               <FileText className="w-3.5 h-3.5" />
               <span>About Project</span>
             </button>
-
-            <button
-              id="nav-auth"
-              onClick={() => setActiveTab('auth')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
-                activeTab === 'auth'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Patient Portal</span>
-            </button>
           </nav>
 
           {/* Vertical divider */}
