@@ -1,4 +1,4 @@
-import { handleAiChatRequest, setCorsHeaders } from './_lib/gemini';
+import { handleAiChatRequest, parseRequestBody, setCorsHeaders } from './_lib/gemini';
 
 /**
  * Vercel Serverless Function: POST /api/ai-chat
@@ -12,38 +12,43 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
+    return res.status(405).json({
+      error: 'Method Not Allowed. Use POST.',
+      code: 'METHOD_NOT_ALLOWED',
+    });
   }
 
   try {
-    let body = req.body;
-    if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch (parseErr) {
-        return res.status(400).json({ error: 'Malformed JSON payload' });
-      }
-    }
+    const body = await parseRequestBody(req);
+    const question = (body?.question || body?.message || '').trim();
+    const assessmentId = body?.assessmentId || 'assessment-session';
 
-    if (!body || !body.assessmentId || !body.question) {
-      return res.status(400).json({ error: 'Missing assessmentId or question in payload.' });
-    }
-
-    const result = await handleAiChatRequest(body);
-    return res.status(200).json(result);
-  } catch (err: any) {
-    console.error('[Vercel Serverless /api/ai-chat] Error:', err?.message || err);
-
-    if (err?.statusCode === 429 || err?.limitReached) {
-      return res.status(429).json({
-        error: err.message || "You've reached the 5-question limit for this assessment.",
-        limitReached: true,
-        remaining: 0,
+    if (!question) {
+      return res.status(400).json({
+        error: 'Missing question in payload.',
+        code: 'BAD_REQUEST',
       });
     }
 
-    return res.status(500).json({
-      error: 'AI Assistant is temporarily unavailable. Please try again.',
+    const result = await handleAiChatRequest({
+      ...body,
+      question,
+      assessmentId,
+    });
+    return res.status(200).json(result);
+  } catch (err: any) {
+    const status = err?.statusCode || 500;
+    const code = err?.code || (err?.limitReached ? 'LIMIT_REACHED' : 'INTERNAL_ERROR');
+    const message = err?.userMessage || err?.message || 'AI Assistant is temporarily unavailable.';
+
+    console.error(`[Vercel Serverless /api/ai-chat] Failure (HTTP ${status}, code: ${code}):`, err?.message || err);
+
+    return res.status(status).json({
+      error: message,
+      code,
+      limitReached: !!err?.limitReached,
+      remaining: err?.remaining ?? 0,
+      details: process.env.NODE_ENV === 'development' ? err?.message : undefined,
     });
   }
 }

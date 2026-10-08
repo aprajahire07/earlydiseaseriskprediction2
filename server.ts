@@ -25,41 +25,59 @@ app.post('/api/ai-summary', async (req, res) => {
   try {
     const { assessment, renderResult } = req.body || {};
     if (!assessment || !renderResult) {
-      return res.status(400).json({ error: 'Missing assessment data or render result' });
+      return res.status(400).json({
+        error: 'Missing assessment data or renderResult in payload.',
+        code: 'BAD_REQUEST',
+      });
     }
 
     const result = await handleAiSummaryRequest(req.body);
     res.json(result);
   } catch (err: any) {
-    console.error('AI summary error:', err?.message || err);
-    res.status(500).json({ error: 'AI summary temporarily unavailable.' });
+    const status = err?.statusCode || 500;
+    const code = err?.code || 'INTERNAL_ERROR';
+    const message = err?.userMessage || err?.message || 'AI summary is temporarily unavailable.';
+    console.error(`[Express /api/ai-summary] Failure (HTTP ${status}, code: ${code}):`, err?.message || err);
+    res.status(status).json({
+      error: message,
+      code,
+      details: err?.message,
+    });
   }
 });
 
 // Endpoint 2: Interactive Inline AI Chat (strictly max 5 user questions per assessment)
 app.post('/api/ai-chat', async (req, res) => {
   try {
-    const { assessmentId, question } = req.body || {};
+    const question = (req.body?.question || req.body?.message || '').trim();
+    const assessmentId = req.body?.assessmentId || 'assessment-session';
 
-    if (!assessmentId || !question) {
-      return res.status(400).json({ error: 'Missing assessmentId or question' });
-    }
-
-    const result = await handleAiChatRequest(req.body);
-    res.json(result);
-  } catch (err: any) {
-    console.error('AI chat error:', err?.message || err);
-
-    if (err?.statusCode === 429 || err?.limitReached) {
-      return res.status(429).json({
-        error: err.message || "You've reached the 5-question limit for this assessment.",
-        limitReached: true,
-        remaining: 0,
+    if (!question) {
+      return res.status(400).json({
+        error: 'Missing question in payload.',
+        code: 'BAD_REQUEST',
       });
     }
 
-    // On server failure, do NOT consume user quota
-    res.status(500).json({ error: 'AI is temporarily unavailable. Please try again.' });
+    const result = await handleAiChatRequest({
+      ...req.body,
+      question,
+      assessmentId,
+    });
+    res.json(result);
+  } catch (err: any) {
+    const status = err?.statusCode || 500;
+    const code = err?.code || (err?.limitReached ? 'LIMIT_REACHED' : 'INTERNAL_ERROR');
+    const message = err?.userMessage || err?.message || 'AI Assistant is temporarily unavailable.';
+    console.error(`[Express /api/ai-chat] Failure (HTTP ${status}, code: ${code}):`, err?.message || err);
+
+    res.status(status).json({
+      error: message,
+      code,
+      limitReached: !!err?.limitReached,
+      remaining: err?.remaining ?? 0,
+      details: err?.message,
+    });
   }
 });
 

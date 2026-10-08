@@ -156,6 +156,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
   const fetchAiSummary = async (assessmentData: AssessedDataSnapshot, renderRes: DisplayPrediction) => {
     setIsAiSummaryLoading(true);
     setAiSummaryError(null);
+
     try {
       const res = await fetch('/api/ai-summary', {
         method: 'POST',
@@ -165,14 +166,52 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           renderResult: renderRes,
         }),
       });
-      if (!res.ok) throw new Error('AI summary response failed');
-      const data = await res.json();
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        console.error('[AI Summary Frontend] Failed to parse JSON response:', parseErr);
+      }
+
+      if (!res.ok) {
+        let userFacingError = 'AI summary is temporarily unavailable.';
+
+        if (res.status === 401 || res.status === 403 || data?.code === 'AUTH_FAILED') {
+          userFacingError = 'AI service authentication error. Please verify server configuration.';
+        } else if (res.status === 404) {
+          userFacingError = 'AI service endpoint was not found (404).';
+        } else if (res.status === 429 || data?.code === 'RATE_LIMIT') {
+          userFacingError = 'AI service rate limit reached. Please wait a moment and try again.';
+        } else if (data?.code === 'MISSING_API_KEY') {
+          userFacingError = 'AI service is not configured (GEMINI_API_KEY missing on server).';
+        } else if (res.status === 503 || data?.code === 'SERVICE_UNAVAILABLE') {
+          userFacingError = 'AI service is temporarily unavailable. Please try again.';
+        } else if (res.status >= 500) {
+          userFacingError = 'AI service encountered a server error. Please try again.';
+        }
+
+        console.error('[AI Summary Frontend] Server responded with error:', {
+          status: res.status,
+          statusText: res.statusText,
+          code: data?.code,
+          error: data?.error,
+          details: data?.details,
+        });
+
+        setAiSummaryError(userFacingError);
+        return;
+      }
+
       if (data && data.summary) {
         setAiSummary(data.summary);
+      } else {
+        console.error('[AI Summary Frontend] Response was missing summary property:', data);
+        setAiSummaryError('AI service returned an empty explanation. Please try again.');
       }
-    } catch (err) {
-      console.warn('AI summary fetch warning:', err);
-      setAiSummaryError('AI summary is momentarily unavailable.');
+    } catch (err: any) {
+      console.error('[AI Summary Frontend] Network connection failure:', err);
+      setAiSummaryError('Unable to reach AI service. Please check network connection.');
     } finally {
       setIsAiSummaryLoading(false);
     }
@@ -213,7 +252,12 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        console.error('[AI Chat Frontend] Failed to parse JSON response:', parseErr);
+      }
 
       if (!res.ok) {
         if (res.status === 429 || data?.limitReached) {
@@ -222,7 +266,29 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           setChatError(data?.error || "You've reached the 5-question limit for this assessment.");
           return;
         }
-        throw new Error(data?.error || 'Failed to receive AI reply');
+
+        let chatErrorMessage = 'AI assistant is temporarily unavailable. Please try again.';
+        if (res.status === 401 || res.status === 403 || data?.code === 'AUTH_FAILED') {
+          chatErrorMessage = 'AI assistant authentication error. Please verify server API key.';
+        } else if (res.status === 404) {
+          chatErrorMessage = 'AI chat endpoint not found (404).';
+        } else if (data?.code === 'MISSING_API_KEY') {
+          chatErrorMessage = 'AI assistant is not configured (GEMINI_API_KEY missing on server).';
+        } else if (res.status === 503) {
+          chatErrorMessage = 'AI assistant is temporarily unavailable. Please try again.';
+        }
+
+        console.error('[AI Chat Frontend] Server responded with error:', {
+          status: res.status,
+          code: data?.code,
+          error: data?.error,
+        });
+
+        setChatError(chatErrorMessage);
+        // Revert question count on failure
+        setUserMessageCount(userMessageCount);
+        setChatRemaining(Math.max(0, 5 - userMessageCount));
+        return;
       }
 
       const aiMsg: ChatMessage = {
@@ -240,8 +306,8 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
         setChatRemaining(data.remaining);
       }
     } catch (err: any) {
-      console.error('Chat error:', err);
-      setChatError('AI assistant is momentarily unavailable. Please try again.');
+      console.error('[AI Chat Frontend] Network error:', err);
+      setChatError('Unable to reach AI assistant. Please check your connection.');
       // Revert quota consumption on network failure
       setUserMessageCount(userMessageCount);
       setChatRemaining(Math.max(0, 5 - userMessageCount));
@@ -1620,15 +1686,24 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
                 </div>
               </div>
             ) : aiSummaryError ? (
-              <div className="py-3 flex items-center justify-between text-xs text-rose-600 bg-rose-50/60 p-3 rounded-xl border border-rose-200">
-                <span>{aiSummaryError}</span>
+              <div className="py-4 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-amber-50/90 border border-amber-200 rounded-xl text-amber-950">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+                  <div>
+                    <p className="font-semibold">{aiSummaryError}</p>
+                    <p className="text-[11px] text-amber-800">
+                      Your Render ML disease risk predictions above remain completely valid and verified.
+                    </p>
+                  </div>
+                </div>
                 {submittedSnapshot && (
                   <button
                     type="button"
                     onClick={() => fetchAiSummary(submittedSnapshot, result)}
-                    className="font-bold underline text-rose-700 hover:text-rose-900 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer transition-colors shadow-2xs shrink-0 self-start sm:self-auto text-xs"
                   >
-                    Retry Summary
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Try Again</span>
                   </button>
                 )}
               </div>

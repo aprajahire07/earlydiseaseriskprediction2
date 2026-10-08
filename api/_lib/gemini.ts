@@ -5,16 +5,11 @@ const assessmentQuestionCounts = new Map<string, number>();
 
 /**
  * Retrieves the Gemini API key from server environment variables.
- * Checks GEMINI_API_KEY first, followed by GOOGLE_API_KEY, GEMINI_KEY, or any prefixed alias.
+ * Checks GEMINI_API_KEY first, followed by GOOGLE_API_KEY as an official server-side alias.
  * NEVER exposed to client.
  */
 export function getGeminiApiKey(): string | null {
-  const key =
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GEMINI_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
-    process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (key && key.trim().length > 0 && key !== 'MY_GEMINI_API_KEY') {
     return key.trim();
   }
@@ -36,6 +31,59 @@ export function createGeminiClient(apiKey: string): GoogleGenAI {
 }
 
 /**
+ * Robust request body parser for Vercel Serverless Functions and Node.js environments.
+ * Handles pre-parsed JSON, raw strings, Buffers, and streaming IncomingMessage requests.
+ */
+export async function parseRequestBody(req: any): Promise<any> {
+  if (!req) return null;
+
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object') {
+      if (Buffer.isBuffer(req.body)) {
+        try {
+          return JSON.parse(req.body.toString('utf-8'));
+        } catch {
+          return null;
+        }
+      }
+      return req.body;
+    }
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        return null;
+      }
+    }
+    return req.body;
+  }
+
+  // If req is a Node.js readable stream (IncomingMessage)
+  if (typeof req.on === 'function') {
+    return new Promise((resolve) => {
+      let data = '';
+      req.on('data', (chunk: any) => {
+        data += chunk;
+      });
+      req.on('end', () => {
+        if (!data || data.trim().length === 0) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          resolve(null);
+        }
+      });
+      req.on('error', () => resolve(null));
+    });
+  }
+
+  return null;
+}
+
+/**
  * Set standard CORS headers for Vercel Serverless Functions
  */
 export function setCorsHeaders(res: any) {
@@ -45,141 +93,172 @@ export function setCorsHeaders(res: any) {
 }
 
 /**
- * Clinical educational summary fallback when Gemini is unreachable, timed out, or unconfigured
+ * Executes a Gemini request with automatic resilience against temporary upstream high-demand spikes (503) or latency.
+ * Prefers gemini-3.8-flash. If Google Cloud reports a temporary high-demand spike (503 UNAVAILABLE) or takes >6s,
+ * seamlessly completes with gemini-3.1-flash-lite to guarantee reliable production uptime.
  */
-export function generateClinicalSummaryFallback(assessment: any, renderResult: any): string {
-  const risk = renderResult?.risk_level || 'Moderate';
-  const disease = renderResult?.target_disease || 'Cardiovascular & Metabolic Health';
-  const bmi = assessment?.bmi || 24;
-  const bp = assessment?.bloodPressure || 'Normal';
-  const act = assessment?.physicalActivity || 'Moderate';
+export async function callGeminiWithResilience(
+  ai: GoogleGenAI,
+  requestParams: { contents: any; config?: any }
+): Promise<any> {
+  try {
+    const flashPromise = ai.models.generateContent({
+      ...requestParams,
+      model: 'gemini-3.8-flash',
+    });
 
-  let multiConditionsNote = '';
-  if (Array.isArray(renderResult?.predictions) && renderResult.predictions.length > 0) {
-    const list = renderResult.predictions
-      .map((p: any) => `${p.disease} (${p.percentageFormatted || p.percentage + '%'})`)
-      .join(', ');
-    multiConditionsNote = ` The ML model evaluated specific indicators across: ${list}.`;
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('GEMINI_FLASH_BUSY_TIMEOUT')), 6000)
+    );
+
+    return await Promise.race([flashPromise, timeoutPromise]);
+  } catch (err: any) {
+    const msg = String(err?.message || '');
+    const isHighDemandSpike =
+      msg === 'GEMINI_FLASH_BUSY_TIMEOUT' ||
+      err?.status === 503 ||
+      msg.includes('503') ||
+      msg.includes('high demand') ||
+      msg.includes('UNAVAILABLE') ||
+      msg.includes('overloaded');
+
+    if (isHighDemandSpike) {
+      console.warn(`[Gemini Server] Upstream gemini-3.8-flash is experiencing high demand/latency (${msg}). Completing request with gemini-3.1-flash-lite...`);
+      return await ai.models.generateContent({
+        ...requestParams,
+        model: 'gemini-3.1-flash-lite',
+      });
+    }
+
+    throw err;
   }
-
-  return `Based on your clinical ML evaluation, your overall profile indicates a ${risk} risk level, with primary attention directed toward ${disease}.${multiConditionsNote} Your recorded Body Mass Index of ${bmi} and resting blood pressure category (${bp}) are key contributing factors analyzed by the model.\n\nTo proactively support your long-term health, focus on consistent daily physical movement (${String(act).toLowerCase().includes('active') ? 'maintaining your active routine' : 'aiming for 150 minutes of weekly aerobic exercise'}), a balanced diet rich in whole grains and lean proteins, and monitoring your resting blood pressure twice monthly. Please share these findings with your primary healthcare provider for comprehensive clinical oversight.`;
 }
 
 /**
- * Clinical chat fallback generator when Gemini is unreachable or timed out
- */
-export function generateClinicalChatFallback(
-  question: string,
-  assessment: any,
-  renderResult: any
-): string {
-  const q = question.toLowerCase();
-  const risk = renderResult?.risk_level || 'Moderate';
-  const disease = renderResult?.target_disease || 'Cardiovascular & Metabolic Health';
-  const bmi = assessment?.bmi || 24;
-  const bp = assessment?.bloodPressure || 'Normal';
-  const act = assessment?.physicalActivity || 'Moderate';
-  const smoking = assessment?.smokingHabit || 'Never';
-
-  if (q.includes('why') || q.includes('result') || q.includes('reason')) {
-    return `Your assessment resulted in ${risk} risk because the machine learning model weighed your vital indicators together. The primary drivers include your blood pressure (${bp}), BMI (${bmi}), and physical activity level (${act}). Together, these parameters most closely matched patterns in ${disease}.`;
-  }
-  if (q.includes('improve') || q.includes('first') || q.includes('next') || q.includes('step')) {
-    return `The most impactful first step is establishing consistent aerobic exercise (such as brisk walking for 30 minutes, 5 days a week) and monitoring your sodium intake to support healthy arterial pressure. Even small, sustainable lifestyle shifts can significantly enhance your cardiovascular health index.`;
-  }
-  if (q.includes('bmi') || q.includes('weight')) {
-    const bmiVal = parseFloat(String(bmi));
-    let category = 'within the healthy range (18.5–24.9)';
-    if (bmiVal >= 30) category = 'in the obesity range (≥30.0)';
-    else if (bmiVal >= 25) category = 'in the overweight range (25.0–29.9)';
-    else if (bmiVal < 18.5) category = 'in the underweight range (<18.5)';
-
-    return `Your calculated BMI is ${bmi}, which falls ${category}. While BMI is an informative general screening ratio between height and weight, it does not distinguish muscle mass from fat. Balancing nutrient-dense meals and regular physical activity will help maintain optimal body composition.`;
-  }
-  if (q.includes('blood pressure') || q.includes('bp') || q.includes('hypertension')) {
-    return `Your resting blood pressure was reported as "${bp}". Blood pressure measures the tension against your artery walls. Maintaining readings below 120/80 mmHg helps reduce strain on your heart and cerebral blood vessels. Routine cuff checks and limiting excess dietary salt are strongly encouraged.`;
-  }
-  if (q.includes('risk level') || q.includes('mean') || q.includes('score')) {
-    return `Your ${risk} risk level indicates the statistical probability pattern identified by the Render clinical model across chronic health factors. It is an educational early warning indicator designed to empower proactive lifestyle choices, not a definitive clinical diagnosis.`;
-  }
-  if (q.includes('recalculate') || q.includes('change')) {
-    return `Your risk result comes from the authoritative clinical assessment model. I can explain the existing result, but I cannot replace or recalculate it. If your numbers have changed, you can click "Start a New Assessment" to run a fresh evaluation.`;
-  }
-
-  return `Regarding your assessment (${disease}, ${risk} risk): maintaining a balanced lifestyle with regular movement, smoke-free habits (${smoking}), and routine health screenings provides the strongest protective foundation. Discuss these results with a licensed doctor for personalized medical evaluation.`;
-}
-
-/**
- * Handle AI Health Summary generation with safe timeouts and error handling
+ * Handle AI Health Summary generation grounded strictly in Render ML assessment
  */
 export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: string }> {
   const { assessment, renderResult } = reqBody || {};
 
   if (!assessment || !renderResult) {
-    throw new Error('Missing assessment data or render result');
+    const badReqError: any = new Error('Missing assessment data or renderResult in payload.');
+    badReqError.statusCode = 400;
+    badReqError.code = 'BAD_REQUEST';
+    throw badReqError;
   }
 
   const apiKey = getGeminiApiKey();
 
-  if (apiKey) {
-    try {
-      console.log('[AI Summary] Initiating Gemini request for assessment');
-      const ai = createGeminiClient(apiKey);
-
-      const predictionsText = Array.isArray(renderResult.predictions)
-        ? renderResult.predictions.map((p: any) => `${p.disease}: ${p.percentageFormatted || p.percentage + '%'}`).join('; ')
-        : renderResult.target_disease;
-
-      const prompt = `You are a certified preventive health educator.
-Analyze this user's clinical ML assessment results and write a concise, empowering, 2-paragraph educational explanation.
-
-CLINICAL ML GROUND TRUTH (RENDER MODEL RESULT — DO NOT ALTER):
-- Overall Risk Level: ${renderResult.risk_level}
-- Target Condition Focus: ${renderResult.target_disease}
-- Risk Percentage: ${renderResult.risk_percentage}
-- Health Index: ${renderResult.health_index ?? 'N/A'}/100
-- Multi-Disease Predictions: ${predictionsText}
-- Model Recommendations: ${Array.isArray(renderResult.recommendations) ? renderResult.recommendations.join('; ') : renderResult.recommendations}
-
-USER INPUT PARAMETERS:
-- Age: ${assessment.age}
-- Biological Sex: ${assessment.gender}
-- BMI: ${assessment.bmi} (Height: ${assessment.heightCm} cm, Weight: ${assessment.weightKg} kg)
-- Resting Blood Pressure: ${assessment.bloodPressure}
-- Physical Movement: ${assessment.physicalActivity}
-- Smoking Status: ${assessment.smokingHabit}
-- Alcohol Intake: ${assessment.alcoholConsumption}
-- Family Medical Background: ${assessment.familyHistory || 'None reported'}
-- Blood Sugar: ${assessment.bloodSugar || 'Normal'}
-
-STRICT MEDICAL & SAFETY RULES:
-1. Do NOT diagnose or claim certainty (avoid "You have diabetes", "You will get heart disease"). Use "Your assessment indicates...", "This pattern is associated with...", "Consult a physician...".
-2. Explain how their specific lifestyle factors (BMI, blood pressure, physical activity, family history) relate to the Render risk score and predicted conditions.
-3. Keep the tone calm, constructive, and educational.`;
-
-      const genPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-      });
-
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-      const result: any = await Promise.race([genPromise, timeoutPromise]);
-
-      if (result && result.text) {
-        console.log('[AI Summary] Gemini successfully responded');
-        return { summary: result.text.trim() };
-      }
-      console.warn('[AI Summary] Gemini request timed out (8s), falling back to clinical generator');
-    } catch (err: any) {
-      console.warn('[AI Summary] Gemini API call exception:', err?.message || err);
-    }
-  } else {
-    console.warn('[AI Summary] No GEMINI_API_KEY detected in environment, using clinical education generator');
+  if (!apiKey) {
+    console.error('[AI Summary Server] GEMINI_API_KEY is not configured in server environment variables.');
+    const configError: any = new Error('AI service is not configured on the server. GEMINI_API_KEY is missing.');
+    configError.statusCode = 503;
+    configError.code = 'MISSING_API_KEY';
+    configError.userMessage = 'AI service is not configured on the server (GEMINI_API_KEY missing).';
+    throw configError;
   }
 
-  // Graceful clinical educational summary fallback
-  const fallbackSummary = generateClinicalSummaryFallback(assessment, renderResult);
-  return { summary: fallbackSummary };
+  try {
+    console.log('[AI Summary Server] Initiating Gemini request for assessment');
+    const ai = createGeminiClient(apiKey);
+
+    // Format all disease predictions evaluated by the Render ML model
+    let predictionsText = '';
+    if (Array.isArray(renderResult.predictions) && renderResult.predictions.length > 0) {
+      predictionsText = renderResult.predictions
+        .map((p: any) => `- ${p.disease}: ${p.percentageFormatted || p.percentage + '%'}`)
+        .join('\n');
+    } else if (renderResult.condition_results && typeof renderResult.condition_results === 'object') {
+      predictionsText = Object.entries(renderResult.condition_results)
+        .map(([k, v]) => `- ${k}: ${v}%`)
+        .join('\n');
+    } else {
+      predictionsText = `- ${renderResult.target_disease || 'Evaluated Condition'}: ${renderResult.risk_percentage || 'N/A'}`;
+    }
+
+    const recommendationsList = Array.isArray(renderResult.recommendations)
+      ? renderResult.recommendations.map((r: any) => `- ${r}`).join('\n')
+      : `- ${renderResult.recommendations || 'Maintain healthy lifestyle habits'}`;
+
+    // Prompt Gemini strictly as an explanation layer
+    const prompt = `You are explaining the results of an ML health-risk model.
+
+The following prediction values were produced by the application's Render ML model.
+Do not modify, recalculate, invent, or replace any prediction value.
+Explain the provided results in simple, clear, empowering language (2 to 3 paragraphs).
+Do not diagnose the user.
+
+Render ML result:
+Overall Risk Level: ${renderResult.risk_level || 'Evaluated'}
+Overall Risk Score: ${renderResult.risk_percentage || 'N/A'}
+Health Index: ${renderResult.health_index ?? 'N/A'}/100
+Target Condition Focus: ${renderResult.target_disease || 'Health Assessment'}
+Evaluated Disease Predictions:
+${predictionsText}
+Model Recommendations:
+${recommendationsList}
+
+User Assessed Parameters:
+- Age: ${assessment.age || 'N/A'}
+- Biological Sex: ${assessment.gender || 'N/A'}
+- BMI: ${assessment.bmi || 'N/A'} (Height: ${assessment.heightCm || 'N/A'} cm, Weight: ${assessment.weightKg || 'N/A'} kg)
+- Blood Pressure Category: ${assessment.bloodPressure || 'N/A'}
+- Physical Activity Level: ${assessment.physicalActivity || 'N/A'}
+- Smoking Habit: ${assessment.smokingHabit || 'N/A'}
+- Alcohol Intake: ${assessment.alcoholConsumption || 'N/A'}
+- Blood Sugar: ${assessment.bloodSugar || 'Normal'}
+- Family Medical Background: ${assessment.familyHistory || 'None reported'}
+
+Instructions:
+1. Explain what each evaluated disease risk probability from the Render ML model signifies in plain language.
+2. Discuss how the user's specific reported lifestyle factors and vitals correlate with these findings.
+3. Offer constructive preventive habits.
+4. Conclude with a clear reminder that this is an educational ML statistical model, not a medical diagnosis, and encourage consultation with a healthcare provider.`;
+
+    const response = await callGeminiWithResilience(ai, {
+      contents: prompt,
+    });
+
+    const summaryText = response.text?.trim();
+    if (!summaryText) {
+      console.error('[AI Summary Server] Gemini returned an empty summary text.');
+      const emptyError: any = new Error('AI service returned an empty explanation.');
+      emptyError.statusCode = 502;
+      emptyError.code = 'EMPTY_RESPONSE';
+      throw emptyError;
+    }
+
+    console.log('[AI Summary Server] Gemini generated summary successfully');
+    return { summary: summaryText };
+  } catch (err: any) {
+    if (err.statusCode) {
+      throw err;
+    }
+
+    const msg = String(err?.message || '');
+    console.error('[AI Summary Server] Gemini generation error:', msg);
+
+    const mappedErr: any = new Error(msg || 'AI summary generation failed');
+    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid') || err?.status === 401 || err?.status === 403) {
+      mappedErr.statusCode = 401;
+      mappedErr.code = 'AUTH_FAILED';
+      mappedErr.userMessage = 'Gemini authentication failed. Please check server GEMINI_API_KEY.';
+    } else if (err?.status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      mappedErr.statusCode = 429;
+      mappedErr.code = 'RATE_LIMIT';
+      mappedErr.userMessage = 'Gemini rate limit or quota exceeded. Please try again shortly.';
+    } else if (err?.status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
+      mappedErr.statusCode = 503;
+      mappedErr.code = 'SERVICE_UNAVAILABLE';
+      mappedErr.userMessage = 'Gemini service is temporarily unavailable. Please try again.';
+    } else {
+      mappedErr.statusCode = 500;
+      mappedErr.code = 'GEMINI_ERROR';
+      mappedErr.userMessage = 'AI summary is temporarily unavailable.';
+    }
+
+    throw mappedErr;
+  }
 }
 
 /**
@@ -192,14 +271,18 @@ export async function handleAiChatRequest(reqBody: any): Promise<{
   maxAllowed: number;
   limitReached: boolean;
 }> {
-  const { assessmentId, assessment, renderResult, messages, question } = reqBody || {};
+  const { assessment, renderResult, messages } = reqBody || {};
+  const question = (reqBody?.question || reqBody?.message || '').trim();
+  const assessmentId = reqBody?.assessmentId || 'assessment-session';
 
-  if (!assessmentId || !question) {
-    throw new Error('Missing assessmentId or question');
+  if (!question) {
+    const badReqError: any = new Error('Missing question or message in payload.');
+    badReqError.statusCode = 400;
+    badReqError.code = 'BAD_REQUEST';
+    throw badReqError;
   }
 
-  // 1. Strictly enforce 5 user messages limit server-side
-  // Check both verified conversation history and server map
+  // Strictly enforce 5 user messages limit server-side
   const historyUserCount = Array.isArray(messages)
     ? messages.filter((m: any) => m && (m.role === 'user' || m.role === 'User')).length
     : 0;
@@ -207,27 +290,44 @@ export async function handleAiChatRequest(reqBody: any): Promise<{
   const currentCount = Math.max(historyUserCount, inMemoryCount);
 
   if (currentCount >= 5) {
-    console.log(`[AI Chat] Assessment ${assessmentId} has reached the 5-question limit.`);
+    console.log(`[AI Chat Server] Assessment ${assessmentId} has reached the 5-question limit.`);
     const limitError: any = new Error("You've reached the 5-question limit for this assessment.");
     limitError.statusCode = 429;
+    limitError.code = 'LIMIT_REACHED';
     limitError.limitReached = true;
     limitError.remaining = 0;
     throw limitError;
   }
 
-  let replyText = '';
   const apiKey = getGeminiApiKey();
 
-  if (apiKey) {
-    try {
-      console.log(`[AI Chat] Processing question ${currentCount + 1}/5 for assessment ${assessmentId}`);
-      const ai = createGeminiClient(apiKey);
+  if (!apiKey) {
+    console.error('[AI Chat Server] GEMINI_API_KEY is not configured in server environment variables.');
+    const configError: any = new Error('AI service is not configured on the server. GEMINI_API_KEY is missing.');
+    configError.statusCode = 503;
+    configError.code = 'MISSING_API_KEY';
+    configError.userMessage = 'AI assistant is not configured on the server (GEMINI_API_KEY missing).';
+    throw configError;
+  }
 
-      const predictionsText = Array.isArray(renderResult?.predictions)
-        ? renderResult.predictions.map((p: any) => `${p.disease}: ${p.percentageFormatted || p.percentage + '%'}`).join('; ')
-        : renderResult?.target_disease || 'None';
+  try {
+    console.log(`[AI Chat Server] Processing question ${currentCount + 1}/5 for assessment ${assessmentId}`);
+    const ai = createGeminiClient(apiKey);
 
-      const systemInstruction = `You are an educational preventive health assistant for the Early Disease Risk Prediction platform.
+    let predictionsText = '';
+    if (Array.isArray(renderResult?.predictions) && renderResult.predictions.length > 0) {
+      predictionsText = renderResult.predictions
+        .map((p: any) => `${p.disease}: ${p.percentageFormatted || p.percentage + '%'}`)
+        .join('; ');
+    } else if (renderResult?.condition_results && typeof renderResult.condition_results === 'object') {
+      predictionsText = Object.entries(renderResult.condition_results)
+        .map(([k, v]) => `${k}: ${v}%`)
+        .join('; ');
+    } else {
+      predictionsText = `${renderResult?.target_disease || 'General Health'}: ${renderResult?.risk_percentage || 'N/A'}`;
+    }
+
+    const systemInstruction = `You are an educational preventive health assistant for the Early Disease Risk Prediction platform.
 You are helping the user understand their recent clinical ML assessment result in an inline chat.
 
 AUTHORITATIVE ASSESSMENT CONTEXT (DO NOT OVERRIDE OR RECALCULATE):
@@ -242,7 +342,7 @@ USER ASSESSED PARAMETERS:
 - Name: ${assessment?.fullName || 'User'}
 - Age: ${assessment?.age || 'N/A'}
 - Biological Sex: ${assessment?.gender || 'N/A'}
-- BMI: ${assessment?.bmi || 'N/A'} (Height: ${assessment?.heightCm} cm, Weight: ${assessment?.weightKg} kg)
+- BMI: ${assessment?.bmi || 'N/A'} (Height: ${assessment?.heightCm || 'N/A'} cm, Weight: ${assessment?.weightKg || 'N/A'} kg)
 - Blood Pressure: ${assessment?.bloodPressure || 'N/A'}
 - Physical Activity: ${assessment?.physicalActivity || 'N/A'}
 - Smoking Habit: ${assessment?.smokingHabit || 'N/A'}
@@ -258,58 +358,78 @@ MANDATORY RULES:
 5. If the user asks something completely unrelated to health or this assessment, respond:
    "I can only help explain your health assessment and preventive health topics. Feel free to ask about your result or lifestyle recommendations."`;
 
-      const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-      if (Array.isArray(messages)) {
-        for (const msg of messages) {
-          if (!msg || !msg.text) continue;
-          if (msg.role === 'user') {
-            contents.push({ role: 'user', parts: [{ text: msg.text }] });
-          } else if (msg.role === 'assistant' || msg.role === 'model') {
-            contents.push({ role: 'model', parts: [{ text: msg.text }] });
-          }
+    if (Array.isArray(messages)) {
+      for (const msg of messages) {
+        if (!msg || !msg.text) continue;
+        if (msg.role === 'user') {
+          contents.push({ role: 'user', parts: [{ text: msg.text }] });
+        } else if (msg.role === 'assistant' || msg.role === 'model') {
+          contents.push({ role: 'model', parts: [{ text: msg.text }] });
         }
       }
-
-      contents.push({ role: 'user', parts: [{ text: question }] });
-
-      const genPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents,
-        config: {
-          systemInstruction,
-        },
-      });
-
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-      const aiRes: any = await Promise.race([genPromise, timeoutPromise]);
-
-      if (aiRes && aiRes.text) {
-        replyText = aiRes.text.trim();
-        console.log(`[AI Chat] Gemini responded successfully for assessment ${assessmentId}`);
-      }
-    } catch (geminiErr: any) {
-      console.warn('[AI Chat] Gemini call error:', geminiErr?.message || geminiErr);
     }
-  } else {
-    console.warn('[AI Chat] No GEMINI_API_KEY found, using clinical chat generator');
+
+    contents.push({ role: 'user', parts: [{ text: question }] });
+
+    const response = await callGeminiWithResilience(ai, {
+      contents,
+      config: {
+        systemInstruction,
+      },
+    });
+
+    const replyText = response.text?.trim();
+    if (!replyText) {
+      const emptyError: any = new Error('AI service returned an empty answer.');
+      emptyError.statusCode = 502;
+      emptyError.code = 'EMPTY_RESPONSE';
+      throw emptyError;
+    }
+
+    // Increment counter ONLY upon successful generation
+    const newCount = currentCount + 1;
+    assessmentQuestionCounts.set(assessmentId, newCount);
+    const remaining = Math.max(0, 5 - newCount);
+
+    console.log(`[AI Chat Server] Question answered successfully (${newCount}/5)`);
+
+    return {
+      reply: replyText,
+      used: newCount,
+      remaining,
+      maxAllowed: 5,
+      limitReached: newCount >= 5,
+    };
+  } catch (err: any) {
+    if (err.statusCode) {
+      throw err;
+    }
+
+    const msg = String(err?.message || '');
+    console.error('[AI Chat Server] Gemini chat generation error:', msg);
+
+    const mappedErr: any = new Error(msg || 'AI chat generation failed');
+    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid') || err?.status === 401 || err?.status === 403) {
+      mappedErr.statusCode = 401;
+      mappedErr.code = 'AUTH_FAILED';
+      mappedErr.userMessage = 'Gemini authentication failed. Please check server GEMINI_API_KEY.';
+    } else if (err?.status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      mappedErr.statusCode = 429;
+      mappedErr.code = 'RATE_LIMIT';
+      mappedErr.userMessage = 'Gemini rate limit or quota exceeded. Please try again shortly.';
+    } else if (err?.status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
+      mappedErr.statusCode = 503;
+      mappedErr.code = 'SERVICE_UNAVAILABLE';
+      mappedErr.userMessage = 'Gemini service is temporarily unavailable. Please try again.';
+    } else {
+      mappedErr.statusCode = 500;
+      mappedErr.code = 'GEMINI_ERROR';
+      mappedErr.userMessage = 'AI assistant is temporarily unavailable.';
+    }
+
+    throw mappedErr;
   }
-
-  if (!replyText) {
-    replyText = generateClinicalChatFallback(question, assessment, renderResult);
-  }
-
-  // Increment counter ONLY upon successful generation
-  const newCount = currentCount + 1;
-  assessmentQuestionCounts.set(assessmentId, newCount);
-
-  const remaining = Math.max(0, 5 - newCount);
-
-  return {
-    reply: replyText,
-    used: newCount,
-    remaining,
-    maxAllowed: 5,
-    limitReached: newCount >= 5,
-  };
 }
+
