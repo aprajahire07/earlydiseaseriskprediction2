@@ -41,6 +41,9 @@ app.post('/api/ai-summary', async (req, res) => {
     res.status(status).json({
       error: message,
       code,
+      actualError: err?.actualError || err?.message,
+      errorCategory: code,
+      modelAttempted: err?.modelAttempted,
       details: err?.message,
     });
   }

@@ -175,7 +175,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
       }
 
       if (!res.ok) {
-        let userFacingError = 'AI summary is temporarily unavailable.';
+        let userFacingError = data?.error || 'AI summary is temporarily unavailable.';
 
         if (res.status === 401 || res.status === 403 || data?.code === 'AUTH_FAILED') {
           userFacingError = 'AI service authentication error. Please verify server configuration.';
@@ -185,10 +185,12 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           userFacingError = 'AI service rate limit reached. Please wait a moment and try again.';
         } else if (data?.code === 'MISSING_API_KEY') {
           userFacingError = 'AI service is not configured (GEMINI_API_KEY missing on server).';
+        } else if (res.status === 504 || data?.code === 'TIMEOUT') {
+          userFacingError = 'AI service request timed out. Please try again.';
         } else if (res.status === 503 || data?.code === 'SERVICE_UNAVAILABLE') {
           userFacingError = 'AI service is temporarily unavailable. Please try again.';
         } else if (res.status >= 500) {
-          userFacingError = 'AI service encountered a server error. Please try again.';
+          userFacingError = data?.error || 'AI service encountered a server error. Please try again.';
         }
 
         console.error('[AI Summary Frontend] Server responded with error:', {
@@ -196,6 +198,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           statusText: res.statusText,
           code: data?.code,
           error: data?.error,
+          actualError: data?.actualError,
           details: data?.details,
         });
 
@@ -267,13 +270,17 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           return;
         }
 
-        let chatErrorMessage = 'AI assistant is temporarily unavailable. Please try again.';
+        let chatErrorMessage = data?.error || 'AI assistant is temporarily unavailable. Please try again.';
         if (res.status === 401 || res.status === 403 || data?.code === 'AUTH_FAILED') {
           chatErrorMessage = 'AI assistant authentication error. Please verify server API key.';
         } else if (res.status === 404) {
           chatErrorMessage = 'AI chat endpoint not found (404).';
         } else if (data?.code === 'MISSING_API_KEY') {
           chatErrorMessage = 'AI assistant is not configured (GEMINI_API_KEY missing on server).';
+        } else if (res.status === 429 || data?.code === 'RATE_LIMIT') {
+          chatErrorMessage = 'AI assistant rate limit reached. Please wait a moment.';
+        } else if (res.status === 504 || data?.code === 'TIMEOUT') {
+          chatErrorMessage = 'AI assistant request timed out. Please try again.';
         } else if (res.status === 503) {
           chatErrorMessage = 'AI assistant is temporarily unavailable. Please try again.';
         }
@@ -282,6 +289,8 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
           status: res.status,
           code: data?.code,
           error: data?.error,
+          actualError: data?.actualError,
+          details: data?.details,
         });
 
         setChatError(chatErrorMessage);

@@ -46,9 +46,12 @@ export default async function handler(req: any, res: any) {
     return res.status(status).json({
       error: message,
       code,
+      actualError: err?.actualError || err?.message,
+      errorCategory: code,
+      modelAttempted: err?.modelAttempted,
       limitReached: !!err?.limitReached,
       remaining: err?.remaining ?? 0,
-      details: process.env.NODE_ENV === 'development' ? err?.message : undefined,
+      details: err?.message,
     });
   }
 }

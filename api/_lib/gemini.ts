@@ -6,12 +6,14 @@ const assessmentQuestionCounts = new Map<string, number>();
 /**
  * Retrieves the Gemini API key from server environment variables.
  * Checks GEMINI_API_KEY first, followed by GOOGLE_API_KEY as an official server-side alias.
- * NEVER exposed to client.
+ * Sanitizes quotation marks and whitespace. NEVER exposed to client.
  */
 export function getGeminiApiKey(): string | null {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (key && key.trim().length > 0 && key !== 'MY_GEMINI_API_KEY') {
-    return key.trim();
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!rawKey) return null;
+  const key = rawKey.trim().replace(/^["']|["']$/g, '').trim();
+  if (key.length > 0 && key !== 'MY_GEMINI_API_KEY') {
+    return key;
   }
   return null;
 }
@@ -95,89 +97,123 @@ export function setCorsHeaders(res: any) {
 /**
  * Executes a Gemini request with automatic multi-model resilience.
  * Uses GEMINI_MODEL if configured, otherwise falls back gracefully through the available models:
- * 'gemini-3.1-flash-lite' (high availability), 'gemini-3.8-flash', and 'gemini-flash-latest'.
- * This guarantees reliable production uptime even during upstream high-demand spikes (503) or latency spikes.
+ * 'gemini-3.1-flash-lite' (proven high responsiveness and quota availability),
+ * 'gemini-flash-lite-latest', 'gemini-3.8-flash', and 'gemini-flash-latest'.
+ * Guarantees reliable production uptime even under serverless environments and upstream quota limits.
  */
 export async function callGeminiWithResilience(
   ai: GoogleGenAI,
   requestParams: { contents: any; config?: any }
-): Promise<any> {
+): Promise<{ response: any; model: string }> {
   const configuredModel = (process.env.GEMINI_MODEL || '').trim();
   const candidateModels: string[] = [];
 
   if (configuredModel) {
     candidateModels.push(configuredModel);
   }
-  // Default prioritized fallback order:
-  // gemini-3.1-flash-lite is proven responsive and available under peak load
-  const standardFallbacks = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  // Prioritized fallback list: gemini-3.1-flash-lite is the fastest and most available model
+  const standardFallbacks = [
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ];
   for (const m of standardFallbacks) {
     if (!candidateModels.includes(m)) {
       candidateModels.push(m);
     }
   }
 
+  // Ensure default fast token limit for serverless execution if not provided
+  const mergedConfig = {
+    maxOutputTokens: 350,
+    temperature: 0.3,
+    ...(requestParams.config || {}),
+  };
+
   let lastError: any = null;
+  const attemptedModels: string[] = [];
 
   for (let i = 0; i < candidateModels.length; i++) {
     const model = candidateModels[i];
-    console.log(`[Gemini Server] Attempting model ${i + 1}/${candidateModels.length}: ${model}`);
+    attemptedModels.push(model);
+    console.log(`[Gemini Server Diagnostics] Selected Gemini model: ${model} (Candidate ${i + 1}/${candidateModels.length})`);
+    console.log(`[Gemini Server Diagnostics] Gemini request started at: ${new Date().toISOString()}`);
 
+    const startTime = Date.now();
     try {
-      // 10s per-model timeout to avoid hanging serverless execution
+      // 7.5s per-model timeout to guarantee response within Vercel serverless window
       const modelPromise = ai.models.generateContent({
         ...requestParams,
+        config: mergedConfig,
         model,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`GEMINI_TIMEOUT_ON_${model}`)), 10000)
+        setTimeout(() => reject(new Error(`GEMINI_TIMEOUT_ON_${model}`)), 7500)
       );
 
       const response = await Promise.race([modelPromise, timeoutPromise]);
-      console.log(`[Gemini Server] Successfully generated response with model: ${model}`);
-      return response;
+      const elapsedMs = Date.now() - startTime;
+      console.log(`[Gemini Server Diagnostics] Gemini response status: SUCCESS (HTTP 200 equivalent) in ${elapsedMs}ms with model: ${model}`);
+      return { response, model };
     } catch (err: any) {
+      const elapsedMs = Date.now() - startTime;
       lastError = err;
-      const status = err?.status || err?.statusCode || 'UNKNOWN';
-      const msg = String(err?.message || '');
-      console.warn(`[Gemini Server] Model ${model} encountered error (status: ${status}): ${msg.slice(0, 160)}`);
+      const status = err?.status || err?.statusCode || (String(err?.message || '').includes('TIMEOUT') ? 504 : 'UNKNOWN');
+      const rawMsg = String(err?.message || '');
+      console.warn(`[Gemini Server Diagnostics] Model ${model} failed after ${elapsedMs}ms (status: ${status}, error category: ${rawMsg.slice(0, 180)})`);
 
-      // If this is an authentication error (invalid API key), trying other models won't help
-      if (status === 401 || status === 403 || msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
-        console.error('[Gemini Server] Halting model retries due to authentication failure.');
+      // If this is an authentication error (invalid API key), stop retries to avoid wasting time
+      if (
+        status === 401 ||
+        status === 403 ||
+        rawMsg.includes('API_KEY_INVALID') ||
+        rawMsg.includes('API key not valid') ||
+        rawMsg.includes('invalid api key')
+      ) {
+        console.error('[Gemini Server Diagnostics] Halting model retries: Gemini API key is invalid or rejected by Google API.');
         throw err;
       }
 
-      // If we have more fallback models, continue loop
+      // If we have more models, continue fallback loop
       if (i < candidateModels.length - 1) {
-        console.log(`[Gemini Server] Falling back to next available model...`);
+        console.log(`[Gemini Server Diagnostics] Falling back to next resilient model: ${candidateModels[i + 1]}`);
       }
     }
   }
 
+  if (lastError) {
+    lastError.attemptedModels = attemptedModels;
+  }
   throw lastError;
 }
 
 /**
  * Handle AI Health Summary generation grounded strictly in Render ML assessment
  */
-export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: string }> {
+export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: string; modelUsed?: string }> {
+  console.log('[AI Summary Server Diagnostics] AI endpoint reached: /api/ai-summary');
+
   const { assessment, renderResult } = reqBody || {};
 
   if (!assessment || !renderResult) {
+    console.warn('[AI Summary Server Diagnostics] Request validation result: FAIL (Missing assessment data or renderResult in payload)');
     const badReqError: any = new Error('Missing assessment data or renderResult in payload.');
     badReqError.statusCode = 400;
     badReqError.code = 'BAD_REQUEST';
+    badReqError.userMessage = 'Assessment input and Render ML predictions are required.';
     throw badReqError;
   }
 
+  console.log('[AI Summary Server Diagnostics] Request validation result: PASS');
+
   const apiKey = getGeminiApiKey();
   const hasKey = !!apiKey;
-  console.log(`[AI Summary Server] Endpoint reached. Validation: PASS. GEMINI_API_KEY present: ${hasKey}. Configured GEMINI_MODEL: ${process.env.GEMINI_MODEL || 'none (using defaults)'}`);
+  console.log(`[AI Summary Server Diagnostics] GEMINI_API_KEY exists: ${hasKey} (Server environment check: ${hasKey ? 'configured' : 'missing'})`);
 
   if (!apiKey) {
-    console.error('[AI Summary Server] GEMINI_API_KEY is not configured in server environment variables.');
+    console.error('[AI Summary Server Diagnostics] Actual error category: MISSING_API_KEY - process.env.GEMINI_API_KEY is not set on the server.');
     const configError: any = new Error('AI service is not configured on the server. GEMINI_API_KEY is missing.');
     configError.statusCode = 503;
     configError.code = 'MISSING_API_KEY';
@@ -186,7 +222,6 @@ export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: s
   }
 
   try {
-    console.log('[AI Summary Server] Gemini request started...');
     const ai = createGeminiClient(apiKey);
 
     // Format all disease predictions evaluated by the Render ML model
@@ -212,7 +247,7 @@ export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: s
 
 The following prediction values were produced by the application's Render ML model.
 Do not modify, recalculate, invent, or replace any prediction value.
-Explain the provided results in simple, clear, empowering language (2 to 3 paragraphs).
+Explain the provided results in simple, clear, empowering language (2 to 3 concise paragraphs).
 Do not diagnose the user.
 
 Render ML result:
@@ -229,59 +264,86 @@ User Assessed Parameters:
 - Age: ${assessment.age || 'N/A'}
 - Biological Sex: ${assessment.gender || 'N/A'}
 - BMI: ${assessment.bmi || 'N/A'} (Height: ${assessment.heightCm || 'N/A'} cm, Weight: ${assessment.weightKg || 'N/A'} kg)
-- Blood Pressure Category: ${assessment.bloodPressure || 'N/A'}
-- Physical Activity Level: ${assessment.physicalActivity || 'N/A'}
+- Blood Pressure: ${assessment.bloodPressure || 'N/A'}
+- Physical Activity: ${assessment.physicalActivity || 'N/A'}
 - Smoking Habit: ${assessment.smokingHabit || 'N/A'}
-- Alcohol Intake: ${assessment.alcoholConsumption || 'N/A'}
 - Blood Sugar: ${assessment.bloodSugar || 'Normal'}
-- Family Medical Background: ${assessment.familyHistory || 'None reported'}
+- Family History: ${assessment.familyHistory || 'None reported'}
 
 Instructions:
-1. Explain what each evaluated disease risk probability from the Render ML model signifies in plain language.
-2. Discuss how the user's specific reported lifestyle factors and vitals correlate with these findings.
-3. Offer constructive preventive habits.
-4. Conclude with a clear reminder that this is an educational ML statistical model, not a medical diagnosis, and encourage consultation with a healthcare provider.`;
+1. Explain what the evaluated disease risk probabilities from the Render ML model signify in clear language.
+2. Discuss how the user's reported vitals and habits relate to these statistical findings.
+3. Offer 2-3 positive preventive lifestyle habits.
+4. Conclude with a reminder that this is an educational ML statistical model, not a medical diagnosis.`;
 
-    const response = await callGeminiWithResilience(ai, {
+    const { response, model: modelUsed } = await callGeminiWithResilience(ai, {
       contents: prompt,
+      config: {
+        maxOutputTokens: 350,
+        temperature: 0.3,
+      },
     });
 
     const summaryText = response.text?.trim();
     if (!summaryText) {
-      console.error('[AI Summary Server] Gemini returned an empty summary text.');
+      console.error('[AI Summary Server Diagnostics] Gemini response parsing result: FAIL (Empty text generated)');
       const emptyError: any = new Error('AI service returned an empty explanation.');
       emptyError.statusCode = 502;
       emptyError.code = 'EMPTY_RESPONSE';
+      emptyError.userMessage = 'AI service returned an empty response. Please try again.';
       throw emptyError;
     }
 
-    console.log('[AI Summary Server] Gemini generated summary successfully');
-    return { summary: summaryText };
+    console.log(`[AI Summary Server Diagnostics] Gemini response parsing result: PASS (${summaryText.length} characters parsed) using ${modelUsed}`);
+    return { summary: summaryText, modelUsed };
   } catch (err: any) {
     if (err.statusCode) {
       throw err;
     }
 
     const msg = String(err?.message || '');
-    console.error('[AI Summary Server] Gemini generation error:', msg);
+    const status = err?.status || err?.statusCode || 500;
+    console.error(`[AI Summary Server Diagnostics] Actual error category/message: HTTP ${status} - ${msg}`);
 
     const mappedErr: any = new Error(msg || 'AI summary generation failed');
-    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid') || err?.status === 401 || err?.status === 403) {
+    mappedErr.modelAttempted = err?.attemptedModels || 'gemini-3.1-flash-lite';
+
+    if (
+      msg.includes('API_KEY_INVALID') ||
+      msg.includes('API key not valid') ||
+      msg.includes('invalid api key') ||
+      status === 401 ||
+      status === 403
+    ) {
       mappedErr.statusCode = 401;
       mappedErr.code = 'AUTH_FAILED';
-      mappedErr.userMessage = 'Gemini authentication failed. Please check server GEMINI_API_KEY.';
-    } else if (err?.status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      mappedErr.actualError = 'Google Gemini API key was rejected as invalid or unauthorized.';
+      mappedErr.userMessage = 'Gemini authentication error: Please verify GEMINI_API_KEY in Vercel Environment Variables.';
+    } else if (status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
       mappedErr.statusCode = 429;
       mappedErr.code = 'RATE_LIMIT';
-      mappedErr.userMessage = 'Gemini rate limit or quota exceeded. Please try again shortly.';
-    } else if (err?.status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
+      mappedErr.actualError = 'Gemini API rate limit or billing quota exceeded.';
+      mappedErr.userMessage = 'Gemini rate limit exceeded. Please wait a moment and try again.';
+    } else if (msg.includes('TIMEOUT')) {
+      mappedErr.statusCode = 504;
+      mappedErr.code = 'TIMEOUT';
+      mappedErr.actualError = 'Gemini upstream generation exceeded execution deadline.';
+      mappedErr.userMessage = 'AI summary timed out. Please try again.';
+    } else if (status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
       mappedErr.statusCode = 503;
       mappedErr.code = 'SERVICE_UNAVAILABLE';
+      mappedErr.actualError = 'Gemini model service is currently experiencing upstream demand spikes.';
       mappedErr.userMessage = 'Gemini service is temporarily unavailable. Please try again.';
+    } else if (status === 404 || msg.includes('not found') || msg.includes('no longer available')) {
+      mappedErr.statusCode = 404;
+      mappedErr.code = 'MODEL_UNAVAILABLE';
+      mappedErr.actualError = `Selected Gemini model is not accessible: ${msg.slice(0, 100)}`;
+      mappedErr.userMessage = 'Configured AI model is unavailable. Falling back automatically.';
     } else {
       mappedErr.statusCode = 500;
       mappedErr.code = 'GEMINI_ERROR';
-      mappedErr.userMessage = 'AI summary is temporarily unavailable.';
+      mappedErr.actualError = msg.slice(0, 200);
+      mappedErr.userMessage = 'AI summary generation encountered an error. Please try again.';
     }
 
     throw mappedErr;
@@ -402,18 +464,22 @@ MANDATORY RULES:
 
     contents.push({ role: 'user', parts: [{ text: question }] });
 
-    const response = await callGeminiWithResilience(ai, {
+    const { response, model: modelUsed } = await callGeminiWithResilience(ai, {
       contents,
       config: {
         systemInstruction,
+        maxOutputTokens: 250,
+        temperature: 0.4,
       },
     });
 
     const replyText = response.text?.trim();
     if (!replyText) {
+      console.error('[AI Chat Server Diagnostics] Gemini chat response parsing result: FAIL (Empty answer generated)');
       const emptyError: any = new Error('AI service returned an empty answer.');
       emptyError.statusCode = 502;
       emptyError.code = 'EMPTY_RESPONSE';
+      emptyError.userMessage = 'AI assistant returned an empty response. Please try again.';
       throw emptyError;
     }
 
@@ -422,7 +488,7 @@ MANDATORY RULES:
     assessmentQuestionCounts.set(assessmentId, newCount);
     const remaining = Math.max(0, 5 - newCount);
 
-    console.log(`[AI Chat Server] Question answered successfully (${newCount}/5)`);
+    console.log(`[AI Chat Server Diagnostics] Gemini chat response status: PASS (${replyText.length} chars) using ${modelUsed} (${newCount}/5 answered)`);
 
     return {
       reply: replyText,
@@ -437,25 +503,48 @@ MANDATORY RULES:
     }
 
     const msg = String(err?.message || '');
-    console.error('[AI Chat Server] Gemini chat generation error:', msg);
+    const status = err?.status || err?.statusCode || 500;
+    console.error(`[AI Chat Server Diagnostics] Actual error category/message: HTTP ${status} - ${msg}`);
 
     const mappedErr: any = new Error(msg || 'AI chat generation failed');
-    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid') || err?.status === 401 || err?.status === 403) {
+    mappedErr.modelAttempted = err?.attemptedModels || 'gemini-3.1-flash-lite';
+
+    if (
+      msg.includes('API_KEY_INVALID') ||
+      msg.includes('API key not valid') ||
+      msg.includes('invalid api key') ||
+      status === 401 ||
+      status === 403
+    ) {
       mappedErr.statusCode = 401;
       mappedErr.code = 'AUTH_FAILED';
-      mappedErr.userMessage = 'Gemini authentication failed. Please check server GEMINI_API_KEY.';
-    } else if (err?.status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      mappedErr.actualError = 'Google Gemini API key was rejected as invalid or unauthorized.';
+      mappedErr.userMessage = 'Gemini authentication error: Please verify GEMINI_API_KEY in Vercel Environment Variables.';
+    } else if (status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
       mappedErr.statusCode = 429;
       mappedErr.code = 'RATE_LIMIT';
-      mappedErr.userMessage = 'Gemini rate limit or quota exceeded. Please try again shortly.';
-    } else if (err?.status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
+      mappedErr.actualError = 'Gemini API rate limit or billing quota exceeded.';
+      mappedErr.userMessage = 'Gemini rate limit exceeded. Please wait a moment and try again.';
+    } else if (msg.includes('TIMEOUT')) {
+      mappedErr.statusCode = 504;
+      mappedErr.code = 'TIMEOUT';
+      mappedErr.actualError = 'Gemini upstream chat generation exceeded execution deadline.';
+      mappedErr.userMessage = 'AI assistant timed out. Please try again.';
+    } else if (status === 503 || msg.includes('UNAVAILABLE') || msg.includes('overloaded')) {
       mappedErr.statusCode = 503;
       mappedErr.code = 'SERVICE_UNAVAILABLE';
+      mappedErr.actualError = 'Gemini model service is currently experiencing upstream demand spikes.';
       mappedErr.userMessage = 'Gemini service is temporarily unavailable. Please try again.';
+    } else if (status === 404 || msg.includes('not found') || msg.includes('no longer available')) {
+      mappedErr.statusCode = 404;
+      mappedErr.code = 'MODEL_UNAVAILABLE';
+      mappedErr.actualError = `Selected Gemini model is not accessible: ${msg.slice(0, 100)}`;
+      mappedErr.userMessage = 'Configured AI model is unavailable. Falling back automatically.';
     } else {
       mappedErr.statusCode = 500;
       mappedErr.code = 'GEMINI_ERROR';
-      mappedErr.userMessage = 'AI assistant is temporarily unavailable.';
+      mappedErr.actualError = msg.slice(0, 200);
+      mappedErr.userMessage = 'AI assistant encountered an error. Please try again.';
     }
 
     throw mappedErr;
