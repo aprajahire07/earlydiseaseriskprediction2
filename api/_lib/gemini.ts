@@ -93,45 +93,70 @@ export function setCorsHeaders(res: any) {
 }
 
 /**
- * Executes a Gemini request with automatic resilience against temporary upstream high-demand spikes (503) or latency.
- * Prefers gemini-3.8-flash. If Google Cloud reports a temporary high-demand spike (503 UNAVAILABLE) or takes >6s,
- * seamlessly completes with gemini-3.1-flash-lite to guarantee reliable production uptime.
+ * Executes a Gemini request with automatic multi-model resilience.
+ * Uses GEMINI_MODEL if configured, otherwise falls back gracefully through the available models:
+ * 'gemini-3.1-flash-lite' (high availability), 'gemini-3.8-flash', and 'gemini-flash-latest'.
+ * This guarantees reliable production uptime even during upstream high-demand spikes (503) or latency spikes.
  */
 export async function callGeminiWithResilience(
   ai: GoogleGenAI,
   requestParams: { contents: any; config?: any }
 ): Promise<any> {
-  try {
-    const flashPromise = ai.models.generateContent({
-      ...requestParams,
-      model: 'gemini-3.8-flash',
-    });
+  const configuredModel = (process.env.GEMINI_MODEL || '').trim();
+  const candidateModels: string[] = [];
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('GEMINI_FLASH_BUSY_TIMEOUT')), 6000)
-    );
-
-    return await Promise.race([flashPromise, timeoutPromise]);
-  } catch (err: any) {
-    const msg = String(err?.message || '');
-    const isHighDemandSpike =
-      msg === 'GEMINI_FLASH_BUSY_TIMEOUT' ||
-      err?.status === 503 ||
-      msg.includes('503') ||
-      msg.includes('high demand') ||
-      msg.includes('UNAVAILABLE') ||
-      msg.includes('overloaded');
-
-    if (isHighDemandSpike) {
-      console.warn(`[Gemini Server] Upstream gemini-3.8-flash is experiencing high demand/latency (${msg}). Completing request with gemini-3.1-flash-lite...`);
-      return await ai.models.generateContent({
-        ...requestParams,
-        model: 'gemini-3.1-flash-lite',
-      });
-    }
-
-    throw err;
+  if (configuredModel) {
+    candidateModels.push(configuredModel);
   }
+  // Default prioritized fallback order:
+  // gemini-3.1-flash-lite is proven responsive and available under peak load
+  const standardFallbacks = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  for (const m of standardFallbacks) {
+    if (!candidateModels.includes(m)) {
+      candidateModels.push(m);
+    }
+  }
+
+  let lastError: any = null;
+
+  for (let i = 0; i < candidateModels.length; i++) {
+    const model = candidateModels[i];
+    console.log(`[Gemini Server] Attempting model ${i + 1}/${candidateModels.length}: ${model}`);
+
+    try {
+      // 10s per-model timeout to avoid hanging serverless execution
+      const modelPromise = ai.models.generateContent({
+        ...requestParams,
+        model,
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`GEMINI_TIMEOUT_ON_${model}`)), 10000)
+      );
+
+      const response = await Promise.race([modelPromise, timeoutPromise]);
+      console.log(`[Gemini Server] Successfully generated response with model: ${model}`);
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status || err?.statusCode || 'UNKNOWN';
+      const msg = String(err?.message || '');
+      console.warn(`[Gemini Server] Model ${model} encountered error (status: ${status}): ${msg.slice(0, 160)}`);
+
+      // If this is an authentication error (invalid API key), trying other models won't help
+      if (status === 401 || status === 403 || msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+        console.error('[Gemini Server] Halting model retries due to authentication failure.');
+        throw err;
+      }
+
+      // If we have more fallback models, continue loop
+      if (i < candidateModels.length - 1) {
+        console.log(`[Gemini Server] Falling back to next available model...`);
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -148,6 +173,8 @@ export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: s
   }
 
   const apiKey = getGeminiApiKey();
+  const hasKey = !!apiKey;
+  console.log(`[AI Summary Server] Endpoint reached. Validation: PASS. GEMINI_API_KEY present: ${hasKey}. Configured GEMINI_MODEL: ${process.env.GEMINI_MODEL || 'none (using defaults)'}`);
 
   if (!apiKey) {
     console.error('[AI Summary Server] GEMINI_API_KEY is not configured in server environment variables.');
@@ -159,7 +186,7 @@ export async function handleAiSummaryRequest(reqBody: any): Promise<{ summary: s
   }
 
   try {
-    console.log('[AI Summary Server] Initiating Gemini request for assessment');
+    console.log('[AI Summary Server] Gemini request started...');
     const ai = createGeminiClient(apiKey);
 
     // Format all disease predictions evaluated by the Render ML model
@@ -300,6 +327,8 @@ export async function handleAiChatRequest(reqBody: any): Promise<{
   }
 
   const apiKey = getGeminiApiKey();
+  const hasKey = !!apiKey;
+  console.log(`[AI Chat Server] Endpoint reached. Validation: PASS. GEMINI_API_KEY present: ${hasKey}. Question ${currentCount + 1}/5 for assessment ${assessmentId}`);
 
   if (!apiKey) {
     console.error('[AI Chat Server] GEMINI_API_KEY is not configured in server environment variables.');
@@ -311,7 +340,7 @@ export async function handleAiChatRequest(reqBody: any): Promise<{
   }
 
   try {
-    console.log(`[AI Chat Server] Processing question ${currentCount + 1}/5 for assessment ${assessmentId}`);
+    console.log(`[AI Chat Server] Gemini request started for question ${currentCount + 1}/5`);
     const ai = createGeminiClient(apiKey);
 
     let predictionsText = '';
