@@ -61,7 +61,7 @@ function MainContent() {
         )}
       </main>
 
-      {/* Auth Modal (Login / Register / Demo) */}
+      {/* Auth Modal (Login / Register) */}
       <AuthModal onOpenFullPortal={() => scrollToAnchor('health')} />
 
       {/* User Profile & Assessment History Modal */}

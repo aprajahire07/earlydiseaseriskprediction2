@@ -19,7 +19,7 @@ interface AuthContextType {
     connected: boolean;
     message: string;
   };
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     name: string,
     email: string,
@@ -28,13 +28,13 @@ interface AuthContextType {
     gender?: string,
     phone?: string,
     lifestyleNotes?: string
-  ) => Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }>;
-  logout: () => void;
+  ) => Promise<{ success: boolean; error?: string; sessionCreated?: boolean }>;
+  logout: () => Promise<void>;
   updateUserName: (newName: string) => Promise<boolean>;
   saveAssessment: (assessment: Omit<SavedAssessment, 'id' | 'userId' | 'date'>) => Promise<SavedAssessment>;
   getUserAssessments: () => SavedAssessment[];
   refreshAssessments: () => Promise<void>;
-  deleteAssessment: (id: string) => void;
+  deleteAssessment: (id: string) => Promise<void>;
   openAuthModal: (mode?: 'login' | 'register') => void;
   closeAuthModal: () => void;
   authModalOpen: boolean;
@@ -45,14 +45,6 @@ interface AuthContextType {
   profileModalOpen: boolean;
   verifySupabaseConnection: () => Promise<void>;
 }
-
-const USERS_STORAGE_KEY = 'disease_risk_users_v1';
-const CURRENT_USER_KEY = 'disease_risk_current_user_v1';
-const ASSESSMENTS_STORAGE_KEY = 'disease_risk_assessments_v1';
-
-// Seed demo patient credentials
-const DEMO_USER_EMAIL = 'demo@healthai.org';
-const DEMO_USER_PASSWORD = 'demo123';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -65,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [supabaseStatus, setSupabaseStatus] = useState<{ checked: boolean; connected: boolean; message: string }>({
     checked: false,
     connected: false,
-    message: 'Checking connection...',
+    message: 'Checking Supabase connection...',
   });
 
   const verifySupabaseConnection = async () => {
@@ -77,192 +69,182 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // Helper to load isolated assessments for a user
-  const loadUserAssessments = async (currentUser: User) => {
-    // 1. Load from local storage (filtered by user id)
+  // Helper to fetch profile from Supabase user_profiles/profiles table
+  const fetchUserProfile = async (supabaseUser: any): Promise<User> => {
+    const userId = supabaseUser.id;
+    const userEmail = supabaseUser.email || '';
+    const userMetadataName =
+      supabaseUser.user_metadata?.full_name ||
+      supabaseUser.user_metadata?.name ||
+      '';
+
+    let resolvedName = userMetadataName;
+    let age: number | undefined;
+    let gender: string | undefined;
+    let phone: string | undefined;
+    let lifestyleNotes: string | undefined;
+
     try {
-      const raw = localStorage.getItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`);
-      if (raw) {
-        const localList: SavedAssessment[] = JSON.parse(raw);
-        setAssessments(localList);
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!error && data) {
+        if (data.full_name) resolvedName = data.full_name;
+        if (data.age) age = data.age;
+        if (data.gender) gender = data.gender;
+        if (data.phone) phone = data.phone;
+        if (data.lifestyle_notes) lifestyleNotes = data.lifestyle_notes;
       } else {
-        // Check legacy global list
-        const legacyRaw = localStorage.getItem(ASSESSMENTS_STORAGE_KEY);
-        if (legacyRaw) {
-          const list: SavedAssessment[] = JSON.parse(legacyRaw);
-          const userOnly = list.filter((a) => a.userId === currentUser.id);
-          setAssessments(userOnly);
-          localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`, JSON.stringify(userOnly));
+        // Also check if public.profiles exists
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (pData && pData.full_name) {
+          resolvedName = pData.full_name;
         }
       }
     } catch (e) {
-      console.warn('Error reading local assessments:', e);
+      console.warn('Error fetching Supabase profile details:', e);
     }
 
-    // 2. Fetch directly from Supabase by user_id
-    try {
-      const remoteList = await fetchUserAssessmentsFromSupabase(currentUser.id);
-      if (remoteList && remoteList.length > 0) {
-        setAssessments(remoteList);
-        localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${currentUser.id}`, JSON.stringify(remoteList));
-      }
-    } catch (e) {
-      console.warn('Error fetching remote assessments:', e);
+    // Default friendly name from email if no name is found
+    if (!resolvedName) {
+      resolvedName = userEmail ? userEmail.split('@')[0] : 'Patient';
     }
+
+    return {
+      id: userId,
+      email: userEmail,
+      name: resolvedName,
+      createdAt: supabaseUser.created_at || new Date().toISOString(),
+      age,
+      gender,
+      phone,
+      lifestyleNotes,
+      syncedToSupabase: true,
+    };
   };
 
-  // Initialize and load saved session
-  useEffect(() => {
-    try {
-      // 1. Seed demo user credentials if not present
-      const existingUsersRaw = localStorage.getItem(USERS_STORAGE_KEY);
-      let usersList: Array<User & { passwordHash: string }> = existingUsersRaw
-        ? JSON.parse(existingUsersRaw)
-        : [];
-
-      const demoExists = usersList.some((u) => u.email.toLowerCase() === DEMO_USER_EMAIL);
-      if (!demoExists) {
-        const demoUser: User & { passwordHash: string } = {
-          id: 'usr_demo_patient_01',
-          name: 'Alex Morgan',
-          email: DEMO_USER_EMAIL,
-          passwordHash: DEMO_USER_PASSWORD,
-          createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-          age: 42,
-          gender: 'Male',
-          phone: '+1 (555) 234-8901',
-          lifestyleNotes: 'Desk job, light exercise on weekends',
-          syncedToSupabase: true,
-        };
-        usersList.push(demoUser);
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersList));
-
-        // Seed initial assessment for demo user
-        const demoAssessments: SavedAssessment[] = [
-          {
-            id: 'asmt_demo_sample_1',
-            userId: demoUser.id,
-            fullName: 'Alex Morgan',
-            date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            disease: 'Heart Health',
-            riskLevel: 'Low',
-            probability: 22,
-            healthIndex: 89,
-            bmi: 23.4,
-            bloodPressure: '118/76',
-            physicalActivity: '180 min/week',
-            smoking: 'Non-Smoker',
-            alcohol: 'None',
-            familyHistory: 'Moderate',
-            recommendations: [
-              'Continue maintaining 150+ minutes of aerobic activity weekly.',
-              'Maintain your balanced diet and hydration.',
-              'Schedule annual routine health checkup.',
-            ],
-            checkedAreas: ['Type 2 Diabetes', 'Heart Health', 'Blood Pressure', 'Stroke Risk', 'Metabolic Health'],
-          },
-          {
-            id: 'asmt_demo_sample_2',
-            userId: demoUser.id,
-            fullName: 'Alex Morgan',
-            date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-            disease: 'Blood Pressure',
-            riskLevel: 'Moderate',
-            probability: 38,
-            healthIndex: 78,
-            bmi: 24.8,
-            bloodPressure: '128/82',
-            physicalActivity: '90 min/week',
-            smoking: 'Non-Smoker',
-            alcohol: 'Occasional',
-            familyHistory: 'Moderate',
-            recommendations: [
-              'Target 150 minutes of moderate aerobic cardiovascular exercise weekly.',
-              'Monitor resting blood pressure twice monthly.',
-              'Maintain daily sodium intake under 2,000 mg.',
-            ],
-            checkedAreas: ['Type 2 Diabetes', 'Heart Health', 'Blood Pressure', 'Stroke Risk', 'Metabolic Health'],
-          },
-        ];
-        localStorage.setItem(`${ASSESSMENTS_STORAGE_KEY}_${demoUser.id}`, JSON.stringify(demoAssessments));
-      }
-
-      // 2. Check local login session
-      const savedUser = localStorage.getItem(CURRENT_USER_KEY);
-      if (savedUser) {
-        const parsedUser: User = JSON.parse(savedUser);
-        setUser(parsedUser);
-        loadUserAssessments(parsedUser);
-      }
-    } catch (e) {
-      console.error('Failed to initialize local auth state:', e);
+  // Helper to load assessments strictly belonging to authenticated user from Supabase
+  const loadUserAssessments = async (userId: string) => {
+    if (!userId) {
+      setAssessments([]);
+      return;
     }
-
-    verifySupabaseConnection();
-  }, []);
-
-  // When user state changes, reload their assessments
-  useEffect(() => {
-    if (user) {
-      loadUserAssessments(user);
-    } else {
+    try {
+      const remoteList = await fetchUserAssessmentsFromSupabase(userId);
+      setAssessments(remoteList);
+    } catch (e) {
+      console.warn('Error fetching assessments from Supabase:', e);
       setAssessments([]);
     }
-  }, [user?.id]);
+  };
+
+  // Production Supabase Auth session & onAuthStateChange subscription
+  useEffect(() => {
+    let mounted = true;
+
+    // 1. Get initial session from real Supabase Auth
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (!mounted) return;
+      if (error) {
+        console.warn('Supabase getSession error:', error.message);
+        setUser(null);
+        setAssessments([]);
+        return;
+      }
+
+      if (session?.user) {
+        const profile = await fetchUserProfile(session.user);
+        if (mounted) {
+          setUser(profile);
+          await loadUserAssessments(profile.id);
+        }
+      } else {
+        setUser(null);
+        setAssessments([]);
+      }
+    });
+
+    // 2. Listen to real Supabase auth state changes
+    const { data: authSubscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (session?.user) {
+          const profile = await fetchUserProfile(session.user);
+          if (mounted) {
+            setUser(profile);
+            await loadUserAssessments(profile.id);
+          }
+        } else {
+          if (mounted) {
+            setUser(null);
+            setAssessments([]);
+          }
+        }
+      }
+    );
+
+    verifySupabaseConnection();
+
+    return () => {
+      mounted = false;
+      authSubscription?.subscription?.unsubscribe();
+    };
+  }, []);
 
   const refreshAssessments = async () => {
-    if (user) {
-      await loadUserAssessments(user);
+    if (user?.id) {
+      await loadUserAssessments(user.id);
     }
   };
 
+  // 100% REAL Supabase Login with signInWithPassword
   const login = async (
     email: string,
     password: string
-  ): Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
       if (!cleanEmail || !password) {
         return { success: false, error: 'Please enter both email and password.' };
       }
 
-      const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
-      const users: Array<User & { passwordHash: string }> = usersRaw ? JSON.parse(usersRaw) : [];
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password,
+      });
 
-      const matchedUser = users.find(
-        (u) => u.email.toLowerCase() === cleanEmail && u.passwordHash === password
-      );
-
-      if (!matchedUser) {
-        return { success: false, error: 'Invalid email or password.' };
+      if (error || !data.user) {
+        return {
+          success: false,
+          error: 'Invalid email or password.',
+        };
       }
 
-      const sessionUser: User = {
-        id: matchedUser.id,
-        name: matchedUser.name,
-        email: matchedUser.email,
-        createdAt: matchedUser.createdAt,
-        age: matchedUser.age,
-        gender: matchedUser.gender,
-        phone: matchedUser.phone,
-        lifestyleNotes: matchedUser.lifestyleNotes,
-        syncedToSupabase: matchedUser.syncedToSupabase,
-      };
-
-      setUser(sessionUser);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionUser));
+      const profile = await fetchUserProfile(data.user);
+      setUser(profile);
+      await loadUserAssessments(profile.id);
+      recordLoginToSupabase(cleanEmail);
       setAuthModalOpen(false);
 
-      // Async record login to Supabase
-      recordLoginToSupabase(sessionUser.email);
-      loadUserAssessments(sessionUser);
-
       return { success: true };
-    } catch {
-      return { success: false, error: 'An error occurred during sign in.' };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: 'Invalid email or password.',
+      };
     }
   };
 
+  // 100% REAL Supabase Sign Up with signUp and profiles table storage
   const register = async (
     name: string,
     email: string,
@@ -271,9 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     gender?: string,
     phone?: string,
     lifestyleNotes?: string
-  ): Promise<{ success: boolean; error?: string; supabaseSynced?: boolean }> => {
+  ): Promise<{ success: boolean; error?: string; sessionCreated?: boolean }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const cleanName = name.trim();
+
       if (!cleanEmail || !cleanEmail.includes('@')) {
         return { success: false, error: 'Please provide a valid email address.' };
       }
@@ -282,124 +266,130 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Password must be at least 6 characters long.' };
       }
 
-      if (!name.trim()) {
-        return { success: false, error: 'Please enter your name.' };
+      if (!cleanName) {
+        return { success: false, error: 'Please enter your full name.' };
       }
 
-      const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
-      const users: Array<User & { passwordHash: string }> = usersRaw ? JSON.parse(usersRaw) : [];
-
-      if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
-        return { success: false, error: 'An account with this email already exists. Please sign in.' };
-      }
-
-      const newUserId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-
-      // 1. Sync typed data to Supabase database table `user_profiles`
-      let syncedToSupabase = false;
-      const supaResult = await syncUserToSupabase({
-        id: newUserId,
+      // 1. Call real Supabase Auth signUp
+      const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
-        name: name.trim(),
         password: password,
+        options: {
+          data: {
+            full_name: cleanName,
+            name: cleanName,
+          },
+        },
+      });
+
+      if (error) {
+        return {
+          success: false,
+          error: error.message || 'Registration failed. Please check your details.',
+        };
+      }
+
+      const createdUser = data.user;
+      if (!createdUser) {
+        return {
+          success: false,
+          error: 'Unable to create user account in Supabase.',
+        };
+      }
+
+      // 2. Store real profile information in Supabase user_profiles and profiles
+      await syncUserToSupabase({
+        id: createdUser.id,
+        email: cleanEmail,
+        name: cleanName,
         age,
         gender,
         phone,
         lifestyleNotes,
       });
 
-      if (supaResult.success) {
-        syncedToSupabase = true;
+      // If Supabase has email confirmation turned off, session is immediately active
+      if (data.session) {
+        const profile: User = {
+          id: createdUser.id,
+          name: cleanName,
+          email: cleanEmail,
+          createdAt: createdUser.created_at || new Date().toISOString(),
+          age,
+          gender,
+          phone,
+          lifestyleNotes,
+          syncedToSupabase: true,
+        };
+        setUser(profile);
+        setAssessments([]);
+        setAuthModalOpen(false);
+        return { success: true, sessionCreated: true };
       }
 
-      // 2. Save locally
-      const newUser: User & { passwordHash: string } = {
-        id: newUserId,
-        name: name.trim(),
-        email: cleanEmail,
-        passwordHash: password,
-        createdAt: new Date().toISOString(),
-        age: age || undefined,
-        gender: gender || undefined,
-        phone: phone || undefined,
-        lifestyleNotes: lifestyleNotes || undefined,
-        syncedToSupabase,
-      };
-
-      users.push(newUser);
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-
-      const sessionUser: User = {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        createdAt: newUser.createdAt,
-        age: newUser.age,
-        gender: newUser.gender,
-        phone: newUser.phone,
-        lifestyleNotes: newUser.lifestyleNotes,
-        syncedToSupabase,
-      };
-
-      setUser(sessionUser);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionUser));
+      // If email confirmation is required by Supabase project settings
       setAuthModalOpen(false);
-
       return {
         success: true,
-        supabaseSynced: syncedToSupabase,
+        sessionCreated: false,
       };
-    } catch {
-      return { success: false, error: 'Registration failed. Please try again.' };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Registration failed. Please try again.',
+      };
     }
   };
 
+  // Update profile name in Supabase
   const updateUserName = async (newName: string): Promise<boolean> => {
     if (!user || !newName.trim()) return false;
     const trimmed = newName.trim();
 
     try {
-      // 1. Update state
       const updatedUser: User = { ...user, name: trimmed };
       setUser(updatedUser);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedUser));
 
-      // 2. Update in user list
-      const usersRaw = localStorage.getItem(USERS_STORAGE_KEY);
-      if (usersRaw) {
-        const users: Array<User & { passwordHash: string }> = JSON.parse(usersRaw);
-        const idx = users.findIndex((u) => u.id === user.id);
-        if (idx !== -1) {
-          users[idx].name = trimmed;
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-        }
-      }
-
-      // 3. Update in Supabase
+      // Update in Supabase profiles & auth metadata
       await updateUserNameInSupabase(user.id, trimmed);
+      try {
+        await supabase.auth.updateUser({
+          data: { full_name: trimmed, name: trimmed },
+        });
+      } catch {
+        // ignore metadata update failure
+      }
       return true;
     } catch (e) {
-      console.warn('Error updating name:', e);
+      console.warn('Error updating name in Supabase:', e);
       return false;
     }
   };
 
-  const logout = () => {
+  // 100% REAL Logout with supabase.auth.signOut()
+  const logout = async () => {
     try {
-      supabase.auth.signOut();
+      await supabase.auth.signOut();
     } catch (e) {
-      // ignore
+      console.warn('Supabase signOut error:', e);
     }
     setUser(null);
     setAssessments([]);
-    localStorage.removeItem(CURRENT_USER_KEY);
     setProfileModalOpen(false);
   };
 
+  // Save assessment with REAL authenticated Supabase user ID: user_id = supabase.auth.getUser().data.user.id
   const saveAssessment = async (
     assessment: Omit<SavedAssessment, 'id' | 'userId' | 'date'>
   ): Promise<SavedAssessment> => {
-    const activeUserId = user ? user.id : 'guest_session';
+    // Get fresh user from Supabase auth
+    const { data: userData } = await supabase.auth.getUser();
+    const activeUserId = userData?.user?.id || user?.id;
+
+    if (!activeUserId) {
+      throw new Error('Authentication required: Cannot save assessment without an authenticated user.');
+    }
+
     const computedIndex =
       assessment.healthIndex ??
       Math.max(5, Math.min(98, Math.round(100 - (assessment.probability || 30))));
@@ -420,23 +410,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ],
     };
 
-    // 1. Update in-memory state if belongs to active user
-    if (user && activeUserId === user.id) {
-      setAssessments((prev) => [newRecord, ...prev]);
+    // Update in-memory state for immediate UI feedback
+    setAssessments((prev) => [newRecord, ...prev]);
 
-      // Save to isolated local storage for user
-      try {
-        const userStorageKey = `${ASSESSMENTS_STORAGE_KEY}_${user.id}`;
-        const raw = localStorage.getItem(userStorageKey);
-        const list: SavedAssessment[] = raw ? JSON.parse(raw) : [];
-        list.unshift(newRecord);
-        localStorage.setItem(userStorageKey, JSON.stringify(list));
-      } catch (e) {
-        console.error('Failed to save assessment to user storage:', e);
-      }
-    }
-
-    // 2. Automatically save to Supabase disease_assessments table
+    // Save strictly to Supabase disease_assessments table
     try {
       await syncAssessmentToSupabase(newRecord, user);
     } catch (e) {
@@ -454,19 +431,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     try {
       setAssessments((prev) => prev.filter((a) => a.id !== id));
-
-      const userStorageKey = `${ASSESSMENTS_STORAGE_KEY}_${user.id}`;
-      const raw = localStorage.getItem(userStorageKey);
-      if (raw) {
-        const list: SavedAssessment[] = JSON.parse(raw);
-        const updated = list.filter((a) => a.id !== id);
-        localStorage.setItem(userStorageKey, JSON.stringify(updated));
-      }
-
-      // Also attempt delete in Supabase
       await supabase.from('disease_assessments').delete().eq('id', id);
     } catch (e) {
-      console.error('Failed to delete assessment:', e);
+      console.error('Failed to delete assessment from Supabase:', e);
     }
   };
 

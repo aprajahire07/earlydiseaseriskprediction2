@@ -7,7 +7,9 @@ import {
   User as UserIcon,
   Eye,
   EyeOff,
-  Sparkles,
+  CheckCircle2,
+  LogIn,
+  UserPlus,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -26,10 +28,12 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (!authModalOpen) return null;
@@ -37,6 +41,23 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
+
+    if (authModalMode === 'register') {
+      if (!name.trim()) {
+        setError('Please enter your full name.');
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match. Please re-enter.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -47,6 +68,7 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
         } else {
           setEmail('');
           setPassword('');
+          setConfirmPassword('');
           closeAuthModal();
         }
       } else {
@@ -58,40 +80,32 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
           parsedAge
         );
         if (!res.success) {
-          setError(res.error || 'Registration failed. Please check your details.');
+          setError(res.error || 'Registration failed. Please check your credentials.');
         } else {
           setName('');
           setEmail('');
           setPassword('');
+          setConfirmPassword('');
           setAge('');
-          closeAuthModal();
+
+          if (res.sessionCreated) {
+            closeAuthModal();
+          } else {
+            setSuccessMsg('Account created successfully! If email verification is enabled on your project, please check your inbox to confirm.');
+          }
         }
       }
     } catch {
-      setError('An error occurred. Please try again.');
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFillDemo = async () => {
-    setEmail('demo@healthai.org');
-    setPassword('demo123');
-    setError(null);
-    setLoading(true);
-    const res = await login('demo@healthai.org', 'demo123');
-    if (res.success) {
-      closeAuthModal();
-    } else {
-      setError(res.error || 'Failed to log in demo account');
-    }
-    setLoading(false);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col"
+        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -106,12 +120,12 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
           </button>
 
           <h2 className="text-xl font-bold text-slate-900">
-            {authModalMode === 'login' ? 'Sign In' : 'Create Account'}
+            {authModalMode === 'login' ? 'Sign In to Supabase' : 'Create Supabase Account'}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             {authModalMode === 'login'
-              ? 'Access your saved health predictions and reports.'
-              : 'Save your health assessments safely.'}
+              ? 'Enter your verified account credentials to access your health data.'
+              : 'Register your real patient profile and protect your health assessments.'}
           </p>
         </div>
 
@@ -122,43 +136,54 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
             onClick={() => {
               setAuthModalMode('login');
               setError(null);
+              setSuccessMsg(null);
             }}
-            className={`flex-1 py-3 text-center transition-colors cursor-pointer ${
+            className={`flex-1 py-3 text-center transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
               authModalMode === 'login'
                 ? 'bg-white text-blue-600 border-b-2 border-blue-600 font-bold'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            Sign In
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Sign In</span>
           </button>
           <button
             type="button"
             onClick={() => {
               setAuthModalMode('register');
               setError(null);
+              setSuccessMsg(null);
             }}
-            className={`flex-1 py-3 text-center transition-colors cursor-pointer ${
+            className={`flex-1 py-3 text-center transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
               authModalMode === 'register'
                 ? 'bg-white text-blue-600 border-b-2 border-blue-600 font-bold'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            Sign Up
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Sign Up</span>
           </button>
         </div>
 
-        {/* Simple Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {/* Real Supabase Auth Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-3.5">
           {error && (
-            <div className="p-2.5 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700">
+            <div className="p-2.5 text-xs rounded-lg border border-red-200 bg-red-50 text-red-700 font-medium">
               {error}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-2.5 text-xs rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 font-medium flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
             </div>
           )}
 
           {authModalMode === 'register' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Your Name
+                Full Name
               </label>
               <div className="relative">
                 <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
@@ -167,7 +192,7 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Rahul Sharma"
+                  placeholder="e.g. David Miller"
                   className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                 />
               </div>
@@ -210,11 +235,32 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label="Toggle password visibility"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
+
+          {authModalMode === 'register' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat your password"
+                  minLength={6}
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+            </div>
+          )}
 
           {authModalMode === 'register' && (
             <div>
@@ -227,7 +273,7 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
                 max="120"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder="e.g. 28"
+                placeholder="e.g. 35"
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
               />
             </div>
@@ -236,27 +282,14 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2 mt-2"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2 mt-3"
           >
             {loading ? (
-              <span>Please wait...</span>
+              <span>Verifying with Supabase...</span>
             ) : (
-              <span>{authModalMode === 'login' ? 'Sign In' : 'Create Account'}</span>
+              <span>{authModalMode === 'login' ? 'Sign In' : 'Create Supabase Account'}</span>
             )}
           </button>
-
-          {/* Quick Demo */}
-          <div className="pt-2 text-center">
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              disabled={loading}
-              className="text-xs text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Use 1-Click Demo Login</span>
-            </button>
-          </div>
         </form>
       </div>
     </div>

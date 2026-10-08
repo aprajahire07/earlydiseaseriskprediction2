@@ -100,17 +100,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
     const res = await login(loginEmail, loginPassword);
     setLoginLoading(false);
     if (!res.success) {
-      setLoginError(res.error || 'Invalid credentials.');
-    }
-  };
-
-  const handleQuickDemo = async () => {
-    setLoginError(null);
-    setLoginLoading(true);
-    const res = await login('demo@healthai.org', 'demo123');
-    setLoginLoading(false);
-    if (!res.success) {
-      setLoginError('Could not sign in with demo account.');
+      setLoginError(res.error || 'Invalid email or password.');
     }
   };
 
@@ -128,7 +118,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
               My Health Dashboard
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
-              Sign in to view your past health assessments, track vital changes, and review personalized prevention plans.
+              Sign in with your verified Supabase account to view your past health assessments, track vital changes, and review personalized prevention plans.
             </p>
           </div>
 
@@ -158,7 +148,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
                 required
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Your password"
+                placeholder="Your Supabase password"
                 className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -174,16 +164,6 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
           </form>
 
           <div className="pt-2 border-t border-slate-200/60 space-y-3">
-            <button
-              type="button"
-              onClick={handleQuickDemo}
-              disabled={loginLoading}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>1-Click Demo Login (Alex Morgan)</span>
-            </button>
-
             <p className="text-xs text-slate-500">
               Don't have an account?{' '}
               <button

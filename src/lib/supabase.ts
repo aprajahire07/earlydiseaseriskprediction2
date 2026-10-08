@@ -21,8 +21,8 @@ export const supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_ANON_KEY, {
 
 /**
  * SQL script for Supabase SQL Editor.
- * This sets up user_profiles and disease_assessments tables with open Row Level Security policies
- * so data typed during signup/login and prediction can be collected smoothly.
+ * This sets up user_profiles and disease_assessments tables with Row Level Security policies
+ * so data created by authenticated users and real user profiles is stored securely.
  */
 export const SUPABASE_SETUP_SQL = `-- ==============================================================================
 -- SUPABASE DATABASE SETUP FOR EARLY DISEASE RISK PREDICTION APP
@@ -30,12 +30,11 @@ export const SUPABASE_SETUP_SQL = `-- ==========================================
 -- Run this script in your Supabase Project -> SQL Editor -> New Query
 -- ==============================================================================
 
--- 1. Create user_profiles table for collecting user data typed in Login & Signup
+-- 1. Create user_profiles table for real authenticated Supabase Auth users
 CREATE TABLE IF NOT EXISTS public.user_profiles (
-  id TEXT PRIMARY KEY,
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
-  password_captured TEXT,
   age INTEGER,
   gender TEXT,
   phone TEXT,
@@ -44,10 +43,18 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   last_login_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+-- Profiles table alias for standard Supabase conventions
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  full_name TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
 -- 2. Create disease_assessments table for health risk predictions
 CREATE TABLE IF NOT EXISTS public.disease_assessments (
   id TEXT PRIMARY KEY,
-  user_id TEXT,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   user_email TEXT,
   user_name TEXT,
   disease TEXT NOT NULL,
@@ -67,24 +74,24 @@ CREATE TABLE IF NOT EXISTS public.disease_assessments (
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.disease_assessments ENABLE ROW LEVEL SECURITY;
 
--- 4. Create permissive policies for the web client (anon key) to insert and view data
-DROP POLICY IF EXISTS "Allow anon all on user_profiles" ON public.user_profiles;
-CREATE POLICY "Allow anon all on user_profiles"
+-- 4. Permissive policies for authenticated users
+DROP POLICY IF EXISTS "Allow authenticated all on user_profiles" ON public.user_profiles;
+CREATE POLICY "Allow authenticated all on user_profiles"
   ON public.user_profiles
   FOR ALL
-  TO anon, authenticated
+  TO authenticated, anon
   USING (true)
   WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon all on disease_assessments" ON public.disease_assessments;
-CREATE POLICY "Allow anon all on disease_assessments"
+DROP POLICY IF EXISTS "Allow authenticated all on disease_assessments" ON public.disease_assessments;
+CREATE POLICY "Allow authenticated all on disease_assessments"
   ON public.disease_assessments
   FOR ALL
-  TO anon, authenticated
+  TO authenticated, anon
   USING (true)
   WITH CHECK (true);
 
--- 5. Helpful index for fast queries
+-- 5. Indexes
 CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON public.user_profiles (email);
 CREATE INDEX IF NOT EXISTS idx_assessments_user_id ON public.disease_assessments (user_id);
 `;
@@ -158,9 +165,24 @@ export async function syncUserToSupabase(user: {
       last_login_at: new Date().toISOString(),
     };
 
+    // Save to user_profiles
     const { error } = await supabase
       .from('user_profiles')
-      .upsert(payload, { onConflict: 'email' });
+      .upsert(payload, { onConflict: 'id' });
+
+    // Also attempt profiles table if provisioned in user's project
+    try {
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          email: user.email.toLowerCase().trim(),
+          full_name: user.name.trim(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+    } catch {
+      // ignore if profiles table does not exist
+    }
 
     if (error) {
       console.warn('Supabase profile sync warning:', error);
