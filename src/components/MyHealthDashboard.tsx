@@ -118,7 +118,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
               My Health Dashboard
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
-              Sign in with your verified Supabase account to view your past health assessments, track vital changes, and review personalized prevention plans.
+              Sign in to your account to view your past health assessments, track vital changes, and review personalized prevention plans.
             </p>
           </div>
 
@@ -148,7 +148,7 @@ export const MyHealthDashboard: React.FC<MyHealthDashboardProps> = ({ onNavigate
                 required
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Your Supabase password"
+                placeholder="Your account password"
                 className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>

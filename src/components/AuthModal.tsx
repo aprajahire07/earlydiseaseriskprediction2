@@ -120,7 +120,7 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
           </button>
 
           <h2 className="text-xl font-bold text-slate-900">
-            {authModalMode === 'login' ? 'Sign In to Supabase' : 'Create Supabase Account'}
+            {authModalMode === 'login' ? 'Sign In' : 'Create Account'}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             {authModalMode === 'login'
@@ -285,9 +285,9 @@ export const AuthModal: React.FC<AuthModalProps> = () => {
             className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2 mt-3"
           >
             {loading ? (
-              <span>Verifying with Supabase...</span>
+              <span>Verifying credentials...</span>
             ) : (
-              <span>{authModalMode === 'login' ? 'Sign In' : 'Create Supabase Account'}</span>
+              <span>{authModalMode === 'login' ? 'Sign In' : 'Create Account'}</span>
             )}
           </button>
         </form>

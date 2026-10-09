@@ -1,4 +1,4 @@
-import { handleAiSummaryRequest, parseRequestBody, setCorsHeaders } from './_lib/gemini';
+import { handleAiSummaryRequest, parseRequestBody, setCorsHeaders } from './_lib/gemini.js';
 
 /**
  * Vercel Serverless Function: POST /api/ai-summary

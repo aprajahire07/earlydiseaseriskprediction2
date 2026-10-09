@@ -1,4 +1,4 @@
-import { handleAiChatRequest, parseRequestBody, setCorsHeaders } from './_lib/gemini';
+import { handleAiChatRequest, parseRequestBody, setCorsHeaders } from './_lib/gemini.js';
 
 /**
  * Vercel Serverless Function: POST /api/ai-chat

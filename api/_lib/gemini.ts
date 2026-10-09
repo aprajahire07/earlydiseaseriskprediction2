@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 // In-memory tracking for assessment question counts: assessmentId -> count (strictly max 5)
 const assessmentQuestionCounts = new Map<string, number>();
@@ -62,12 +62,20 @@ export async function parseRequestBody(req: any): Promise<any> {
 
   // If req is a Node.js readable stream (IncomingMessage)
   if (typeof req.on === 'function') {
+    if (req.readableEnded || req.complete) {
+      return null;
+    }
     return new Promise((resolve) => {
       let data = '';
+      const timer = setTimeout(() => {
+        resolve(null);
+      }, 1000);
+
       req.on('data', (chunk: any) => {
         data += chunk;
       });
       req.on('end', () => {
+        clearTimeout(timer);
         if (!data || data.trim().length === 0) {
           resolve(null);
           return;
@@ -78,7 +86,10 @@ export async function parseRequestBody(req: any): Promise<any> {
           resolve(null);
         }
       });
-      req.on('error', () => resolve(null));
+      req.on('error', () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
     });
   }
 
@@ -142,15 +153,21 @@ export async function callGeminiWithResilience(
 
     const startTime = Date.now();
     try {
-      // 7.5s per-model timeout to guarantee response within Vercel serverless window
+      const modelConfig: any = { ...mergedConfig };
+      // Enable minimal thinking for sub-2s generation if model supports it (Gemini 3 series)
+      if (model.includes('3.1') || model.includes('3.8') || model.includes('gemini-3')) {
+        modelConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.MINIMAL };
+      }
+
+      // 8s per-model timeout to guarantee fast response within Vercel serverless window
       const modelPromise = ai.models.generateContent({
         ...requestParams,
-        config: mergedConfig,
+        config: modelConfig,
         model,
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`GEMINI_TIMEOUT_ON_${model}`)), 7500)
+        setTimeout(() => reject(new Error(`GEMINI_TIMEOUT_ON_${model}`)), 8000)
       );
 
       const response = await Promise.race([modelPromise, timeoutPromise]);

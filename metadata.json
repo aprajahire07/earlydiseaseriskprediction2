@@ -1,6 +1,6 @@
 {
   "name": "Early Disease Risk Prediction",
-  "description": "Early disease risk prediction platform using lifestyle and medical history with Supabase database data collection and patient authentication.",
+  "description": "Early disease risk prediction platform using lifestyle and medical history with secure clinical data collection and patient authentication.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

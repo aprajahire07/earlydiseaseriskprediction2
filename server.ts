@@ -3,7 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { handleAiSummaryRequest, handleAiChatRequest } from './api/_lib/gemini';
+import { handleAiSummaryRequest, handleAiChatRequest } from './api/_lib/gemini.js';
 
 dotenv.config();
 

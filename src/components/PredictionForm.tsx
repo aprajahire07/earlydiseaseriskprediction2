@@ -132,6 +132,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
 
   // Automatic AI Health Summary State
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiSummaryModel, setAiSummaryModel] = useState<string>('Gemini AI');
   const [isAiSummaryLoading, setIsAiSummaryLoading] = useState<boolean>(false);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
 
@@ -208,6 +209,12 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
 
       if (data && data.summary) {
         setAiSummary(data.summary);
+        if (data.modelUsed) {
+          const formatted = data.modelUsed
+            .replace(/-/g, ' ')
+            .replace(/\b\w/g, (c: string) => c.toUpperCase());
+          setAiSummaryModel(formatted);
+        }
       } else {
         console.error('[AI Summary Frontend] Response was missing summary property:', data);
         setAiSummaryError('AI service returned an empty explanation. Please try again.');
@@ -1691,7 +1698,7 @@ export const PredictionForm: React.FC<PredictionFormProps> = ({ onNavigateToHeal
                 </div>
                 <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400">
                   <span>Educational preventive analysis • Not a diagnostic determination</span>
-                  <span className="font-medium text-slate-500">Gemini 3.8 Flash</span>
+                  <span className="font-medium text-slate-500">{aiSummaryModel}</span>
                 </div>
               </div>
             ) : aiSummaryError ? (

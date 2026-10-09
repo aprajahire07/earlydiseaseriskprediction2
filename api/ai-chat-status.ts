@@ -1,4 +1,4 @@
-import { setCorsHeaders } from './_lib/gemini';
+import { setCorsHeaders } from './_lib/gemini.js';
 
 /**
  * Vercel Serverless Function: GET /api/ai-chat-status

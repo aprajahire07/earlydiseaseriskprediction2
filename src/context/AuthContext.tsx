@@ -57,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [supabaseStatus, setSupabaseStatus] = useState<{ checked: boolean; connected: boolean; message: string }>({
     checked: false,
     connected: false,
-    message: 'Checking Supabase connection...',
+    message: 'Checking connection...',
   });
 
   const verifySupabaseConnection = async () => {
@@ -207,6 +207,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // 100% REAL Supabase Login with signInWithPassword
+  // Human-friendly error formatter that sanitizes technical backend and Supabase details
+  const formatAuthError = (err: any, fallbackMessage: string): string => {
+    if (!err) return fallbackMessage;
+    const rawMsg = typeof err === 'string' ? err : err?.message || err?.error_description || String(err);
+    const lower = rawMsg.toLowerCase();
+
+    // Email rate-limit error (over_email_send_rate_limit) or request rate limit
+    if (
+      lower.includes('over_email_send_rate_limit') ||
+      lower.includes('over_request_rate_limit') ||
+      lower.includes('rate_limit') ||
+      lower.includes('rate limit') ||
+      lower.includes('too many requests') ||
+      lower.includes('only request this once every')
+    ) {
+      return 'Too many signup attempts. Please try again later.';
+    }
+
+    // User already registered
+    if (
+      lower.includes('user_already_exists') ||
+      lower.includes('already registered') ||
+      lower.includes('already in use')
+    ) {
+      return 'An account with this email already exists. Please sign in instead.';
+    }
+
+    // Invalid credentials
+    if (
+      lower.includes('invalid login credentials') ||
+      lower.includes('invalid credentials') ||
+      lower.includes('invalid email or password')
+    ) {
+      return 'Invalid email or password. Please try again.';
+    }
+
+    // Password requirements
+    if (
+      lower.includes('weak_password') ||
+      lower.includes('password should be') ||
+      lower.includes('at least 6 characters')
+    ) {
+      return 'Password must be at least 6 characters long.';
+    }
+
+    // Technical database, Supabase, or internal details
+    if (
+      lower.includes('supabase') ||
+      lower.includes('database') ||
+      lower.includes('relation') ||
+      lower.includes('schema') ||
+      lower.includes('table') ||
+      lower.includes('postgrest') ||
+      lower.includes('jwt') ||
+      lower.includes('internal error')
+    ) {
+      return fallbackMessage;
+    }
+
+    return rawMsg || fallbackMessage;
+  };
+
   const login = async (
     email: string,
     password: string
@@ -225,7 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error || !data.user) {
         return {
           success: false,
-          error: 'Invalid email or password.',
+          error: formatAuthError(error, 'Invalid email or password. Please try again.'),
         };
       }
 
@@ -239,7 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       return {
         success: false,
-        error: 'Invalid email or password.',
+        error: formatAuthError(err, 'Invalid email or password. Please try again.'),
       };
     }
   };
@@ -285,7 +347,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) {
         return {
           success: false,
-          error: error.message || 'Registration failed. Please check your details.',
+          error: formatAuthError(error, 'Unable to create your account right now. Please try again.'),
         };
       }
 
@@ -293,7 +355,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!createdUser) {
         return {
           success: false,
-          error: 'Unable to create user account in Supabase.',
+          error: 'Unable to create your account right now. Please try again.',
         };
       }
 
@@ -336,7 +398,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       return {
         success: false,
-        error: err?.message || 'Registration failed. Please try again.',
+        error: formatAuthError(err, 'Unable to create your account right now. Please try again.'),
       };
     }
   };
