@@ -80,7 +80,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with User Info */}
@@ -150,13 +150,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
 
         {/* Assessments Section */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <HeartPulse className="w-4 h-4 text-blue-600" />
                 <span>Saved Risk Assessment History</span>
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Reports computed and saved under your personal profile ({assessments.length}{' '}
                 {assessments.length === 1 ? 'record' : 'records'}).
               </p>
@@ -169,7 +169,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                   closeProfileModal();
                   onNavigateToForm();
                 }}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 cursor-pointer"
               >
                 <span>New Assessment</span>
                 <ExternalLink className="w-3 h-3" />
@@ -178,13 +178,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
           </div>
 
           {assessments.length === 0 ? (
-            <div className="text-center py-10 px-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
+            <div className="text-center py-10 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-3">
+              <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
                 <Activity className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h4 className="font-bold text-slate-800 text-sm">No Saved Reports Yet</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">No Saved Reports Yet</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                   Run a disease risk evaluation from the Prediction Form and save the report to track your indicators over time.
                 </p>
               </div>
@@ -216,18 +216,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                 return (
                   <div
                     key={a.id}
-                    className="border border-slate-200 rounded-xl p-4 bg-white hover:border-slate-300 transition-colors shadow-2xs space-y-3"
+                    className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-white dark:bg-slate-800/90 hover:border-slate-300 dark:hover:border-slate-600 transition-colors shadow-2xs space-y-3"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/80 pb-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm whitespace-pre-line">{a.disease}</span>
+                        <span className="font-bold text-slate-900 dark:text-white text-sm whitespace-pre-line">{a.disease}</span>
                         {getRiskBadge(a.riskLevel)}
-                        <span className="text-xs font-semibold text-slate-500">
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                           ({a.probability}% Composite Score)
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 shrink-0">
                         <span className="flex items-center gap-1 text-[11px]">
                           <Clock className="w-3 h-3 text-slate-400" />
                           {dateStr}
@@ -235,7 +235,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                         <button
                           type="button"
                           onClick={() => handleDelete(a.id)}
-                          className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                          className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
                           title="Delete this record"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -259,9 +259,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                           {preds.map((p, pIdx) => (
                             <span
                               key={pIdx}
-                              className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] font-semibold text-blue-900"
+                              className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold text-blue-900 dark:text-blue-200"
                             >
-                              {p.disease}: <strong className="text-blue-700">{p.percentageFormatted}</strong>
+                              {p.disease}: <strong className="text-blue-700 dark:text-blue-400">{p.percentageFormatted}</strong>
                             </span>
                           ))}
                         </div>
@@ -269,22 +269,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                     })()}
 
                     {/* Snapshot parameters */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-700/80">
                       <div>
                         <span className="text-slate-400 block">BMI:</span>
-                        <span className="font-semibold text-slate-700">{a.bmi} kg/m²</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{a.bmi} kg/m²</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Blood Pressure:</span>
-                        <span className="font-semibold text-slate-700">{a.bloodPressure}</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{a.bloodPressure}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Smoking:</span>
-                        <span className="font-semibold text-slate-700">{a.smoking}</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{a.smoking}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Family History:</span>
-                        <span className="font-semibold text-slate-700 truncate block">
+                        <span className="font-semibold text-slate-700 dark:text-slate-200 truncate block">
                           {a.familyHistory}
                         </span>
                       </div>
@@ -293,10 +293,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
                     {/* Recommendations preview */}
                     {a.recommendations && a.recommendations.length > 0 && (
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                           Key Advice:
                         </span>
-                        <ul className="list-disc list-inside text-xs text-slate-600 space-y-0.5">
+                        <ul className="list-disc list-inside text-xs text-slate-600 dark:text-slate-300 space-y-0.5">
                           {a.recommendations.slice(0, 2).map((rec, idx) => (
                             <li key={idx} className="leading-relaxed">
                               {rec}
@@ -313,12 +313,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ onNavigateTo
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
+        <div className="bg-slate-50 dark:bg-slate-900/90 p-4 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500 dark:text-slate-400">
           <span>Your private health records are protected and confidential.</span>
           <button
             type="button"
             onClick={closeProfileModal}
-            className="px-4 py-1.5 rounded-md bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer shadow-2xs"
+            className="px-4 py-1.5 rounded-md bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer shadow-2xs"
           >
             Close
           </button>

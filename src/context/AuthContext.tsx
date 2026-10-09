@@ -213,10 +213,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rawMsg = typeof err === 'string' ? err : err?.message || err?.error_description || String(err);
     const lower = rawMsg.toLowerCase();
 
-    // Email rate-limit error (over_email_send_rate_limit) or request rate limit
+    // Specific email send rate-limit
+    if (lower.includes('over_email_send_rate_limit')) {
+      return 'Too many signup attempts. Please try again later.';
+    }
+
+    // Specific request rate-limit
+    if (lower.includes('over_request_rate_limit')) {
+      return 'Too many requests. Please wait a few minutes and try again.';
+    }
+
+    // General rate-limit or too many attempts
     if (
-      lower.includes('over_email_send_rate_limit') ||
-      lower.includes('over_request_rate_limit') ||
       lower.includes('rate_limit') ||
       lower.includes('rate limit') ||
       lower.includes('too many requests') ||
@@ -232,6 +240,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lower.includes('already in use')
     ) {
       return 'An account with this email already exists. Please sign in instead.';
+    }
+
+    // Invalid email address
+    if (
+      lower.includes('invalid email') ||
+      lower.includes('email address is invalid') ||
+      lower.includes('unable to validate email')
+    ) {
+      return 'Please enter a valid email address.';
     }
 
     // Invalid credentials
